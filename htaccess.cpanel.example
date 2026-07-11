@@ -1,0 +1,15 @@
+# Exemple pour cPanel — CloudLinux Node.js Selector génère en général ce fichier
+# automatiquement. Si /api/* renvoie 404 HTML, vérifiez Setup Node.js App :
+#   - Startup file : server.js
+#   - Node.js version >= 20
+#   - Variables : DATABASE_URL, NODE_ENV=production
+#
+# Ne modifiez pas le bloc Passenger si cPanel l'a créé.
+
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN
+# PassengerAppRoot "/home/VOTRE_USER/crm-nextjs"
+# PassengerBaseURI "/"
+# PassengerNodejs "/home/VOTRE_USER/nodevenv/crm-nextjs/20/bin/node"
+# PassengerAppType node
+# PassengerStartupFile server.js
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END

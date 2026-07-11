@@ -25,6 +25,8 @@ model Company {
   salesGoals SalesGoal[]
   /// Ventes réalisées pour cette société
   sales      Sale[]
+  /// Journal des actions utilisateurs sur cette société
+  userActionLogs UserActionLog[]
 }
 
 enum CompanyKind {
@@ -91,6 +93,18 @@ model User {
   goalsSetBy       SalesGoal[] @relation("SalesGoalSetBy")
   /// Ventes réalisées par ce commercial
   sales            Sale[]
+  /// Journal des actions effectuées par cet utilisateur
+  actionLogs       UserActionLog[]
+  /// Mise en corbeille
+  deletedAt        DateTime?
+  deletedBy        User?     @relation("UserDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  deletedById      String?
+  usersDeleted     User[]    @relation("UserDeletedBy")
+  leadsDeleted     Lead[]    @relation("LeadDeletedBy")
+  goalsDeleted     SalesGoal[] @relation("SalesGoalDeletedBy")
+  attachmentsDeleted LeadAttachment[] @relation("LeadAttachmentDeletedBy")
+
+  @@index([companyId, deletedAt])
 }
 
 model Lead {
@@ -102,8 +116,8 @@ model Lead {
   source     String?
   /// Civilité (ex: M., Mme) issue du fichier Excel
   civility   String?
-  /// Domaine d'activités du lead (secteur)
-  activityDomain String?
+  /// Secteur d'activités (colonne Excel « Secteur d'activités »)
+  activitySector String?
   /// Nom de la compagnie au moment de la création du lead
   companyName String?
   /// Poste / fonction du prospect dans son entreprise
@@ -131,6 +145,25 @@ model Lead {
   attachments LeadAttachment[]
   /// Événements / tâches de prospection enregistrés dans l'agenda
   agendaItems AgendaItem[]
+  /// Domaines d'activités (plusieurs par lead)
+  activityDomains LeadActivityDomain[]
+  /// Mise en corbeille
+  deletedAt     DateTime?
+  deletedBy     User?     @relation("LeadDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  deletedById   String?
+
+  @@index([companyId, deletedAt])
+}
+
+/// Domaine d'activités rattaché à un lead (liste canonique lead-options)
+model LeadActivityDomain {
+  id     String @id @default(cuid())
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  leadId String
+  domain String
+
+  @@unique([leadId, domain])
+  @@index([domain])
 }
 
 /// Lien entre un lead et un produit, avec une valeur estimative associée
@@ -178,6 +211,12 @@ model LeadAttachment {
   /// Chemin de stockage (ex: /uploads/leads/xxx/filename.pdf)
   storagePath String
   createdAt   DateTime @default(now())
+  /// Mise en corbeille
+  deletedAt   DateTime?
+  deletedBy   User?    @relation("LeadAttachmentDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  deletedById String?
+
+  @@index([leadId, deletedAt])
 }
 
 model Deal {
@@ -361,8 +400,13 @@ model SalesGoal {
   setBy              User?          @relation("SalesGoalSetBy", fields: [setById], references: [id], onDelete: SetNull)
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
+  /// Mise en corbeille
+  deletedAt          DateTime?
+  deletedBy          User?          @relation("SalesGoalDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  deletedById        String?
 
   @@unique([userId, periodType, periodStart])
+  @@index([companyId, deletedAt])
 }
 
 /// Événement de l'agenda : action à mener sur un prospect (prospection → conversion)
@@ -378,4 +422,26 @@ model AgendaItem {
   dueDate     DateTime
   status      AgendaStatus @default(TODO)
   createdAt   DateTime     @default(now())
+}
+
+/// Journal d'audit des actions CRM (mutations + authentification)
+model UserActionLog {
+  id         String   @id @default(cuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId  String
+  /// Code stable (ex: LEAD_CREATE, AUTH_LOGIN)
+  action     String
+  /// Type d'entité concernée (Lead, Client, User, …)
+  entityType String?
+  entityId   String?
+  /// Libellé lisible en français
+  summary    String
+  /// Détails non sensibles (JSON)
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([companyId, createdAt(sort: Desc)])
 }

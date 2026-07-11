@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { getRoleLabel, normalizeFrontendRole } from '@/lib/roles';
+import { getRoleLabel, hasGroupCompanyScopeFrontend, normalizeFrontendRole } from '@/lib/roles';
 import {
   getSecondaryNavItemsForRole,
   type SidebarItemDef,
@@ -13,7 +13,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { Bell, Menu, ShoppingBag, User, X } from 'lucide-react';
+import { Bell, Menu, User, Users, X } from 'lucide-react';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
@@ -27,9 +27,16 @@ const PROFILE_NAV_ITEM: SidebarItemDef = {
   href: '/profile',
 };
 
+const COMMERCIALES_NAV_ITEM: SidebarItemDef = {
+  icon: Users,
+  label: 'Commerciales',
+  href: '/users?role=agent',
+};
+
 function isNavItemActive(pathname: string, href: string): boolean {
   if (href === '/') return pathname === '/';
-  return pathname === href || pathname.startsWith(`${href}/`);
+  const baseHref = href.split('?')[0];
+  return pathname === baseHref || pathname.startsWith(`${baseHref}/`);
 }
 
 function roleLabel(role: string | undefined): string {
@@ -49,10 +56,16 @@ export default function MobileHeader() {
 
   const secondaryItems = useMemo(() => {
     const items = getSecondaryNavItemsForRole(user?.role ?? null);
-    if (!items.some((i) => i.href === '/profile')) {
-      return [...items, PROFILE_NAV_ITEM];
+    const withProfile = items.some((i) => i.href === '/profile')
+      ? items
+      : [...items, PROFILE_NAV_ITEM];
+    if (
+      hasGroupCompanyScopeFrontend(user?.role) &&
+      !withProfile.some((i) => i.href.startsWith('/users'))
+    ) {
+      return [...withProfile, COMMERCIALES_NAV_ITEM];
     }
-    return items;
+    return withProfile;
   }, [user?.role]);
 
   const handleNavigate = (href: string) => {

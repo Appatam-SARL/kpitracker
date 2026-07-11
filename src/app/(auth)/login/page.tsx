@@ -1,6 +1,7 @@
 'use client';
 
 import { Field } from '@/components/ui/field';
+import { fetchApi, readApiError } from '@/lib/fetch-api';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
@@ -24,17 +25,19 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetchApi('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json().catch(() => ({}));
-
       if (!res.ok) {
-        throw new Error(data.error || 'Impossible de se connecter');
+        throw new Error(
+          await readApiError(res, 'Impossible de se connecter'),
+        );
       }
+
+      const data = await res.json();
 
       if (data.requiresMfa) {
         const from =
@@ -68,6 +71,12 @@ export default function LoginPage() {
         router.replace(target);
       }
     } catch (err) {
+      if (err instanceof TypeError) {
+        setError(
+          "Impossible de joindre le serveur. Vérifiez que l'application Node.js est démarrée sur cPanel.",
+        );
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Erreur inattendue');
     } finally {
       setLoading(false);

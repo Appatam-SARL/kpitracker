@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
+import { resolveDashboardLeadWhere } from "@/lib/dashboard-company-scope";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
@@ -6,20 +7,19 @@ export const dynamic = "force-dynamic";
 
 const RECENT_LEADS_LIMIT = 15;
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    // Même périmètre que les KPIs dashboard (filtre société stricte).
-    const whereClause = user.companyId
-      ? { companyId: user.companyId }
-      : undefined;
+    const companyIdParam = new URL(req.url).searchParams.get("companyId");
+    const whereClause = await resolveDashboardLeadWhere(user, companyIdParam);
+    if (whereClause instanceof NextResponse) return whereClause;
 
     const leads = await prisma.lead.findMany({
-      where: whereClause ?? {},
+      where: whereClause,
       orderBy: { createdAt: "desc" },
       take: RECENT_LEADS_LIMIT,
       select: {

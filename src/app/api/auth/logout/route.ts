@@ -1,7 +1,17 @@
+import { getCurrentUser } from '@/lib/auth';
+import { logUserAction, USER_ACTION_CODES } from '@/lib/user-action-log';
 import { NextResponse } from "next/server";
 
 /** POST /api/auth/logout - Supprime le cookie de session */
 export async function POST() {
+  const user = await getCurrentUser();
+  if (user) {
+    await logUserAction({
+      user,
+      action: USER_ACTION_CODES.AUTH_LOGOUT,
+      summary: 'Déconnexion du CRM',
+    });
+  }
   const res = NextResponse.json({ ok: true });
   res.cookies.set("auth_session", "", {
     httpOnly: true,

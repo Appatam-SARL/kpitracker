@@ -1,6 +1,11 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { hasGroupCompanyScope } from "@/lib/group-scope-roles";
+import {
+  GROUP_HOLDING_SCOPE_VALUE,
+  hasGroupCompanyScope,
+  userCompanyInScope,
+  type ResolvedGroupCompanyScope,
+} from "@/lib/group-scope-roles";
 import { prisma } from "@/lib/prisma";
 
 export type Role =
@@ -35,9 +40,16 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, name: true, role: true, companyId: true },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      companyId: true,
+      deletedAt: true,
+    },
   });
-  if (!user) return null;
+  if (!user || user.deletedAt) return null;
 
   return {
     id: user.id,
@@ -88,7 +100,7 @@ export async function requireRole(
 export async function resolveGroupCompanyScope(
   user: AuthUser,
   companyIdParam: string | null,
-): Promise<{ companyId: string } | NextResponse> {
+): Promise<ResolvedGroupCompanyScope | NextResponse> {
   if (!user.companyId) {
     return NextResponse.json(
       { error: "Société non associée à l'utilisateur" },
@@ -96,11 +108,21 @@ export async function resolveGroupCompanyScope(
     );
   }
   if (!hasGroupCompanyScope(user.role)) {
-    return { companyId: user.companyId };
+    return { mode: "single", companyId: user.companyId };
   }
   const requested = companyIdParam?.trim() ?? "";
   if (!requested) {
-    return { companyId: user.companyId };
+    return { mode: "single", companyId: user.companyId };
+  }
+  if (requested === GROUP_HOLDING_SCOPE_VALUE) {
+    const companies = await prisma.company.findMany({
+      where: { kind: "GROUP" },
+      select: { id: true },
+    });
+    return {
+      mode: "holding",
+      companyIds: companies.map((company) => company.id),
+    };
   }
   const company = await prisma.company.findUnique({
     where: { id: requested },
@@ -112,5 +134,167 @@ export async function resolveGroupCompanyScope(
       { status: 400 },
     );
   }
-  return { companyId: company.id };
+  return { mode: "single", companyId: company.id };
+}
+
+const GOAL_MUTATION_DENIED = NextResponse.json(
+  { error: "Accès refusé" },
+  { status: 403 },
+);
+
+/**
+ * Vérifie si l'utilisateur peut créer/modifier/supprimer un objectif
+ * pour une société cible (commercial rattaché à targetCompanyId).
+ */
+export async function canMutateGoalForTargetCompany(
+  actor: AuthUser,
+  targetCompanyId: string | null,
+): Promise<true | NextResponse> {
+  if (!actor.companyId) {
+    return NextResponse.json(
+      { error: "Utilisateur sans entreprise" },
+      { status: 403 },
+    );
+  }
+  if (!targetCompanyId) {
+    return GOAL_MUTATION_DENIED;
+  }
+
+  if (actor.role === "PDG" || actor.role === "DIRECTRICE_OPERATION") {
+    return GOAL_MUTATION_DENIED;
+  }
+
+  if (actor.role === "ADMIN" || actor.role === "MANAGER") {
+    if (targetCompanyId !== actor.companyId) {
+      return NextResponse.json(
+        { error: "Utilisateur non trouvé ou autre entreprise" },
+        { status: 403 },
+      );
+    }
+    return true;
+  }
+
+  if (actor.role === "DIRECTRICE_COMMERCIALE") {
+    const scope = await resolveGroupCompanyScope(actor, targetCompanyId);
+    if (scope instanceof NextResponse) return scope;
+    if (!userCompanyInScope(targetCompanyId, scope)) {
+      return NextResponse.json(
+        { error: "Utilisateur non trouvé ou autre entreprise" },
+        { status: 403 },
+      );
+    }
+    const company = await prisma.company.findUnique({
+      where: { id: targetCompanyId },
+      select: { kind: true },
+    });
+    if (!company || company.kind !== "GROUP") {
+      return GOAL_MUTATION_DENIED;
+    }
+    return true;
+  }
+
+  return GOAL_MUTATION_DENIED;
+}
+
+/** Même périmètre que les objectifs : admin/manager (leur société), directrice (filiales groupe). */
+export async function canManageCatalogForTargetCompany(
+  actor: AuthUser,
+  targetCompanyId: string | null,
+): Promise<true | NextResponse> {
+  return canMutateGoalForTargetCompany(actor, targetCompanyId);
+}
+
+const VIEW_ACCESS_DENIED = NextResponse.json(
+  { error: "Accès refusé" },
+  { status: 403 },
+);
+
+/**
+ * Vérifie si l'utilisateur peut consulter le profil d'un membre
+ * rattaché à targetCompanyId (lecture seule, rôles groupe inclus).
+ */
+export async function canViewUserProfile(
+  actor: AuthUser,
+  targetCompanyId: string | null,
+): Promise<true | NextResponse> {
+  if (!actor.companyId) {
+    return NextResponse.json(
+      { error: "Utilisateur sans entreprise" },
+      { status: 403 },
+    );
+  }
+  if (!targetCompanyId) {
+    return VIEW_ACCESS_DENIED;
+  }
+
+  if (actor.role === "ADMIN" || actor.role === "MANAGER") {
+    if (targetCompanyId !== actor.companyId) {
+      return NextResponse.json(
+        { error: "Utilisateur non trouvé ou autre entreprise" },
+        { status: 403 },
+      );
+    }
+    return true;
+  }
+
+  if (hasGroupCompanyScope(actor.role)) {
+    const scope = await resolveGroupCompanyScope(actor, targetCompanyId);
+    if (scope instanceof NextResponse) return scope;
+    if (!userCompanyInScope(targetCompanyId, scope)) {
+      return NextResponse.json(
+        { error: "Utilisateur non trouvé ou autre entreprise" },
+        { status: 403 },
+      );
+    }
+    const company = await prisma.company.findUnique({
+      where: { id: targetCompanyId },
+      select: { kind: true },
+    });
+    if (!company || company.kind !== "GROUP") {
+      return VIEW_ACCESS_DENIED;
+    }
+    return true;
+  }
+
+  return VIEW_ACCESS_DENIED;
+}
+
+/**
+ * Mise en corbeille d'un compte : admin/manager (leur société), rôles groupe (filiales GROUP).
+ */
+export async function canSoftDeleteUserAccount(
+  actor: AuthUser,
+  target: { id: string; companyId: string; role: Role },
+): Promise<true | NextResponse> {
+  if (!actor.companyId) {
+    return NextResponse.json(
+      { error: "Utilisateur sans entreprise" },
+      { status: 403 },
+    );
+  }
+  if (target.id === actor.id) {
+    return NextResponse.json(
+      { error: "Vous ne pouvez pas mettre votre propre compte à la corbeille" },
+      { status: 403 },
+    );
+  }
+  if (target.role === "ADMIN") {
+    return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+  }
+
+  if (actor.role === "ADMIN" || actor.role === "MANAGER") {
+    if (target.companyId !== actor.companyId) {
+      return NextResponse.json(
+        { error: "Utilisateur non trouvé ou autre entreprise" },
+        { status: 403 },
+      );
+    }
+    return true;
+  }
+
+  if (hasGroupCompanyScope(actor.role)) {
+    return canViewUserProfile(actor, target.companyId);
+  }
+
+  return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
 }

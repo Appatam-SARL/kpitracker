@@ -1,7 +1,12 @@
 import type { Role } from '@/lib/auth';
-import { requireRole } from '@/lib/auth';
-import { hasGroupCompanyScope } from '@/lib/group-scope-roles';
+import { canSoftDeleteUserAccount, requireRole } from '@/lib/auth';
+import {
+  hasGroupCompanyScope,
+  isGroupHoldingScopeValue,
+} from '@/lib/group-scope-roles';
 import { hashPassword } from '@/lib/password';
+import { logUserAction, USER_ACTION_CODES } from '@/lib/user-action-log';
+import { softDeleteUser, activeOnlyWhere } from '@/lib/trash';
 import { prisma } from '@/lib/prisma';
 import { sendWelcomeEmail } from '@/lib/welcome-email';
 import { NextRequest, NextResponse } from 'next/server';
@@ -72,7 +77,7 @@ export async function GET(req: NextRequest) {
   }
   try {
     const companyIdParam = req.nextUrl.searchParams.get('companyId');
-    let filterCompanyId = currentUser.companyId;
+    let filterCompanyId: string | { in: string[] } = currentUser.companyId;
 
     if (companyIdParam) {
       if (!hasGroupCompanyScope(currentUser.role)) {
@@ -81,17 +86,27 @@ export async function GET(req: NextRequest) {
           { status: 403 },
         );
       }
-      const target = await prisma.company.findUnique({
-        where: { id: companyIdParam },
-        select: { id: true },
-      });
-      if (!target) {
-        return NextResponse.json(
-          { error: 'Entreprise introuvable' },
-          { status: 400 },
-        );
+      if (isGroupHoldingScopeValue(companyIdParam)) {
+        const groupCompanies = await prisma.company.findMany({
+          where: { kind: 'GROUP' },
+          select: { id: true },
+        });
+        filterCompanyId = {
+          in: groupCompanies.map((company) => company.id),
+        };
+      } else {
+        const target = await prisma.company.findUnique({
+          where: { id: companyIdParam },
+          select: { id: true },
+        });
+        if (!target) {
+          return NextResponse.json(
+            { error: 'Entreprise introuvable' },
+            { status: 400 },
+          );
+        }
+        filterCompanyId = target.id;
       }
-      filterCompanyId = target.id;
     }
 
     const roleParam = req.nextUrl.searchParams.get('role');
@@ -110,6 +125,7 @@ export async function GET(req: NextRequest) {
     const users = await prisma.user.findMany({
       where: {
         companyId: filterCompanyId,
+        ...activeOnlyWhere,
         ...(roleFilter ? { role: roleFilter } : {}),
       },
       include: { company: true },
@@ -166,6 +182,15 @@ export async function PATCH(req: Request) {
       },
     });
 
+    await logUserAction({
+      user: currentUser,
+      action: USER_ACTION_CODES.USER_UPDATE,
+      entityType: 'User',
+      entityId: user.id,
+      summary: `Modification de l'utilisateur ${user.name}`,
+      metadata: { label: user.name, role: user.role },
+    });
+
     return NextResponse.json(user);
   } catch (error) {
     console.error('PATCH /api/users error', error);
@@ -176,17 +201,11 @@ export async function PATCH(req: Request) {
   }
 }
 
-/** DELETE : suppression d'un utilisateur — ADMIN ou MANAGER. */
+/** DELETE : mise en corbeille d'un utilisateur — ADMIN, MANAGER ou rôles groupe. */
 export async function DELETE(req: Request) {
   const auth = await requireRole(['ADMIN', 'MANAGER']);
   if (auth instanceof Response) return auth;
-  const { user: currentUser } = auth as {
-    user: {
-      id: string;
-      role: 'ADMIN' | 'MANAGER' | 'AGENT';
-      companyId: string | null;
-    };
-  };
+  const { user: currentUser } = auth;
   if (!currentUser.companyId) {
     return NextResponse.json(
       { error: 'Utilisateur sans entreprise' },
@@ -203,16 +222,38 @@ export async function DELETE(req: Request) {
 
     const target = await prisma.user.findUnique({
       where: { id },
-      select: { id: true, companyId: true },
+      select: {
+        id: true,
+        companyId: true,
+        name: true,
+        role: true,
+        deletedAt: true,
+      },
     });
-    if (!target || target.companyId !== currentUser.companyId) {
+    if (!target || target.deletedAt) {
       return NextResponse.json(
         { error: 'Utilisateur non trouvé ou autre entreprise' },
         { status: 403 },
       );
     }
 
-    await prisma.user.delete({ where: { id } });
+    const allowed = await canSoftDeleteUserAccount(currentUser, {
+      id: target.id,
+      companyId: target.companyId,
+      role: target.role as Role,
+    });
+    if (allowed !== true) return allowed;
+
+    await softDeleteUser(currentUser.id, id);
+
+    await logUserAction({
+      user: currentUser,
+      action: USER_ACTION_CODES.USER_DELETE,
+      entityType: 'User',
+      entityId: id,
+      summary: `Mise en corbeille de l'utilisateur ${target.name}`,
+      metadata: { label: target.name },
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {
@@ -282,6 +323,15 @@ export async function POST(req: Request) {
     } catch (emailError) {
       console.error('Welcome email error', emailError);
     }
+
+    await logUserAction({
+      user: currentUser,
+      action: USER_ACTION_CODES.USER_CREATE,
+      entityType: 'User',
+      entityId: user.id,
+      summary: `Création de l'utilisateur ${user.name}`,
+      metadata: { label: user.name, role: user.role },
+    });
 
     return NextResponse.json(user, { status: 201 });
   } catch (error) {

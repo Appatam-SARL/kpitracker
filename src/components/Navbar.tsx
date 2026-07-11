@@ -6,18 +6,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { BookOpen, LogOut, Search, Settings, User } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasGroupCompanyScopeFrontend } from '@/lib/roles';
+import { BookOpen, LogOut, Search, Settings, User, Users } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  company?: { id: string; name: string };
-}
 
 function getInitials(name: string): string {
   return name
@@ -30,20 +23,15 @@ function getInitials(name: string): string {
 
 export default function Navbar() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setUser(data ?? null))
-      .catch(() => setUser(null));
-  }, []);
+  const { user } = useAuth();
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     window.dispatchEvent(new Event('auth:changed'));
     router.push('/login');
   };
+
+  const showCommercialesLink = hasGroupCompanyScopeFrontend(user?.role);
 
   return (
     <header className='hidden sm:flex items-center justify-between pb-4 bg-transparent'>
@@ -98,6 +86,14 @@ export default function Navbar() {
                 <User className='w-4 h-4 mr-2' />
                 Profil
               </DropdownMenuItem>
+              {showCommercialesLink && (
+                <DropdownMenuItem
+                  onClick={() => router.push('/users?role=agent')}
+                >
+                  <Users className='w-4 h-4 mr-2' />
+                  Commerciales
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => router.push('/settings')}>
                 <Settings className='w-4 h-4 mr-2' />
                 Paramètres

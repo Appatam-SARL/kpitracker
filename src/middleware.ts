@@ -16,7 +16,7 @@ const MUST_CHANGE_PASSWORD_COOKIE = 'must_change_password';
 const PUBLIC_PATHS = ['/login', '/login/mfa', '/forgot-password', '/reset-password'];
 
 /** Pages réservées à ADMIN et MANAGER (AGENT refusé selon roles-and-permissions) */
-const ADMIN_OR_MANAGER_PATHS = ['/users', '/settings', '/products-services'];
+const ADMIN_OR_MANAGER_PATHS = ['/users', '/settings', '/products-services', '/corbeille'];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some(
@@ -30,7 +30,15 @@ function isAdminOrManagerOnlyPath(pathname: string): boolean {
   );
 }
 
-export function middleware(request: NextRequest) {
+/** Redirection compatible reverse proxy cPanel (évite new URL(..., request.url) invalide). */
+function redirectTo(request: NextRequest, pathname: string, search?: string): NextResponse {
+  const url = request.nextUrl.clone();
+  url.pathname = pathname;
+  url.search = search ?? '';
+  return NextResponse.redirect(url);
+}
+
+function runMiddleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
   const hasAuth = request.cookies.has(AUTH_COOKIE);
   const role = request.cookies.get(AUTH_ROLE_COOKIE)?.value;
@@ -54,34 +62,43 @@ export function middleware(request: NextRequest) {
 
   if (hasAuth && mustChangePassword) {
     if (pathname !== '/reset-password') {
-      return NextResponse.redirect(new URL('/reset-password', request.url));
+      return redirectTo(request, '/reset-password');
     }
     return NextResponse.next();
   }
 
   // Déjà connecté ET sur une page publique → redirection vers le dashboard
   if (hasAuth && isPublicPath(pathname)) {
-    return NextResponse.redirect(new URL('/', request.url));
+    return redirectTo(request, '/');
   }
 
   // Non connecté ET page protégée → redirection vers login
   if (!hasAuth && !isPublicPath(pathname)) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('from', pathname);
-    return NextResponse.redirect(loginUrl);
+    const from = pathname + request.nextUrl.search;
+    return redirectTo(
+      request,
+      '/login',
+      from ? `?from=${encodeURIComponent(from)}` : '',
+    );
   }
 
   // Pages Utilisateurs / Paramètres : ADMIN, MANAGER et rôles groupe (pas AGENT)
   if (hasAuth && isAdminOrManagerOnlyPath(pathname)) {
-    // On ne bloque que si un rôle explicite non autorisé est présent.
-    // Si le cookie de rôle est absent (anciens logins), on laisse passer
-    // et on se repose sur les gardes de page + API.
     if (role && !ROLES_ADMIN_MANAGER_PAGES.has(role)) {
-      return NextResponse.redirect(new URL('/', request.url));
+      return redirectTo(request, '/');
     }
   }
 
   return NextResponse.next();
+}
+
+export function middleware(request: NextRequest) {
+  try {
+    return runMiddleware(request);
+  } catch (err) {
+    console.error('[middleware] erreur', err);
+    return NextResponse.next();
+  }
 }
 
 export const config = {

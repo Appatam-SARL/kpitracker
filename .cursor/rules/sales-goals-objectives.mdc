@@ -1,5 +1,5 @@
 ---
-description: Objectifs commerciaux par période (Mois, Trimestre, Semestre, Annuelle) définis par manager/admin
+description: Objectifs commerciaux par période (Mois, Trimestre, Semestre, Annuelle) définis par manager/admin/directrice commerciale
 globs: "**/api/goals/**/*.ts","**/goals/**/*.tsx","**/schema.prisma","**/users/page.tsx","**/stats/page.tsx"
 alwaysApply: false
 ---
@@ -8,7 +8,9 @@ alwaysApply: false
 
 ## Principe
 
-- Seuls **MANAGER** et **ADMIN** peuvent créer, modifier ou supprimer des objectifs.
+- **MANAGER** et **ADMIN** : création, modification et suppression d’objectifs pour les commerciaux de **leur société**.
+- **DIRECTRICE_COMMERCIALE** : création et redéfinition d’objectifs pour les commerciaux de **toutes les sociétés du groupe** (`kind: GROUP`), via la page Utilisateurs + sélecteur d’entreprise.
+- **PDG** et **DIRECTRICE_OPERATION** : consultation des commerciales par entreprise (lecture seule, pas de mutation d’objectifs).
 - Les objectifs sont définis **par commercial (AGENT)** selon la période : **Mois**, **Trimestre**, **Semestre**, **Annuelle**.
 - Un objectif par (userId, periodType, periodStart). Indicateurs : objectif conversions + objectif CA.
 
@@ -29,11 +31,13 @@ alwaysApply: false
 
 ## API
 
-- **POST /api/goals** : requireRole(['ADMIN','MANAGER']). Body : userId, periodType, year, month?|quarter?|semester?. Calculer periodStart/periodEnd côté serveur selon le type ; upsert.
-- **GET /api/goals** : ADMIN/MANAGER voient tous les objectifs (filtrés companyId) ; AGENT uniquement les siens (userId = currentUser.id). Exposer réalisé (conversions + CA entre periodStart et periodEnd).
-- **PATCH/DELETE /api/goals/[id]** : réservés ADMIN/MANAGER.
+- **POST /api/goals** : requireRole(['ADMIN','MANAGER']) (rôles groupe via effectiveRole). Vérification `canMutateGoalForTargetCompany` : directrice commerciale autorisée cross-entreprise groupe ; PDG/directrice opération refusés. Body : userId, periodType, year, month?|quarter?|semester?. Upsert ; `companyId` = société du commercial cible.
+- **GET /api/goals** : ADMIN/MANAGER voient leur société ; rôles groupe avec `?companyId=`. AGENT uniquement les siens.
+- **PATCH/DELETE /api/goals/[id]** : même règle `canMutateGoalForTargetCompany` que POST.
+- **GET /api/goals/current** : expose `id`, `periodType`, `periodStart` pour la redéfinition en UI.
 
 ## Frontend
 
-- Formulaire "Définir objectif" : choix Mois / Trimestre / Semestre / Annuelle puis année + mois/trimestre/semestre selon le cas ; champs objectif conversions et objectif CA.
-- Liste/suivi : afficher la période en clair (ex. "Fév. 2025", "T1 2025", "S1 2025", "2025") et réalisé vs objectif.
+- Page **Utilisateurs** (`/users`) : sélecteur d’entreprise pour rôles groupe ; colonne « Objectif en cours » ; actions « Définir / Redéfinir objectif » pour admin, manager et directrice commerciale.
+- Menu utilisateur (Navbar / mobile) : entrée **Commerciales** → `/users?role=agent` (rôles groupe uniquement).
+- **GoalSetSheet** : mode `create` (POST) ou `edit` (PATCH, période verrouillée, cibles modifiables).

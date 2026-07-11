@@ -3,11 +3,19 @@ import {
   getLeadIdsWithActivitySinceInCompany,
   getLegacyUnassignedLeadIdsForAgent,
 } from '@/lib/agentLegacyLeadAccess';
-import { getCurrentUser } from '@/lib/auth';
-import { hasGroupCompanyScope } from '@/lib/group-scope-roles';
+import { getCurrentUser, resolveGroupCompanyScope } from '@/lib/auth';
+import { logUserAction, formatLeadName, USER_ACTION_CODES } from '@/lib/user-action-log';
+import { softDeleteLead, activeOnlyWhere } from '@/lib/trash';
+import { hasGroupCompanyScope, prismaCompanyScopeFilter } from '@/lib/group-scope-roles';
+import {
+  leadActivityDomainsInclude,
+  normalizeActivityDomainsInput,
+  serializeLeadWithActivityDomains,
+} from '@/lib/lead-activity-domains';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import type { Prisma, LeadStatus } from '@prisma/client';
 
 const createLeadSchema = z.object({
   firstName: z.string().min(1),
@@ -16,7 +24,8 @@ const createLeadSchema = z.object({
   email: z.string().email().optional(),
   source: z.string().optional(),
   civility: z.string().optional(),
-  activityDomain: z.string().optional(),
+  activitySector: z.string().optional(),
+  activityDomains: z.array(z.string()).optional(),
   companyName: z.string().optional(),
   jobTitle: z.string().optional(),
   location: z.string().optional(),
@@ -40,7 +49,8 @@ const updateLeadSchema = z.object({
   email: z.string().email().optional(),
   source: z.string().optional(),
   civility: z.string().optional(),
-  activityDomain: z.string().optional(),
+  activitySector: z.string().optional(),
+  activityDomains: z.array(z.string()).optional(),
   companyName: z.string().optional(),
   jobTitle: z.string().optional(),
   location: z.string().optional(),
@@ -77,31 +87,24 @@ export async function GET(req: Request) {
     const takeParam = url.searchParams.get('take');
     const skipParam = url.searchParams.get('skip');
 
-    // Par défaut: isolation par entreprise
-    // Rôles groupe : peuvent lire d'autres entreprises via companyId=...
-    let effectiveCompanyId = user.companyId;
-    if (hasGroupCompanyScope(user.role) && companyIdParam) {
-      const exists = await prisma.company.findUnique({
-        where: { id: companyIdParam },
-        select: { id: true },
-      });
-      if (!exists) {
-        return NextResponse.json(
-          { error: 'Entreprise introuvable' },
-          { status: 400 },
-        );
-      }
-      effectiveCompanyId = companyIdParam;
+    // Par défaut: isolation par entreprise ; rôles groupe : companyId= ou holding
+    let companyScope: { companyId: string | { in: string[] } } = {
+      companyId: user.companyId,
+    };
+    if (hasGroupCompanyScope(user.role)) {
+      const scope = await resolveGroupCompanyScope(user, companyIdParam);
+      if (scope instanceof NextResponse) return scope;
+      companyScope = prismaCompanyScopeFilter(scope);
     }
 
-    const where: any = { companyId: effectiveCompanyId };
-    const andConditions: any[] = [];
+    const where: Prisma.LeadWhereInput = { ...companyScope, ...activeOnlyWhere };
+    const andConditions: Prisma.LeadWhereInput[] = [];
 
     // Legacy transition: AGENT voit ses leads assignés + leads non assignés dont la première
     // activité de création/import (leadId OU relatedTo) est la sienne.
     if (user.role === 'AGENT') {
       const legacyIds = await getLegacyUnassignedLeadIdsForAgent(
-        effectiveCompanyId,
+        user.companyId,
         user.id,
       );
       andConditions.push({
@@ -119,7 +122,7 @@ export async function GET(req: Request) {
         .map((s) => s.trim())
         .filter(Boolean);
       if (statuses.length) {
-        where.status = { in: statuses };
+        where.status = { in: statuses as LeadStatus[] };
       }
     }
 
@@ -167,7 +170,7 @@ export async function GET(req: Request) {
       cutoff.setDate(cutoff.getDate() - staleDays);
       // Sans activité récente (leadId OU relatedTo), cohérent avec les activités legacy.
       const withRecent = await getLeadIdsWithActivitySinceInCompany(
-        effectiveCompanyId,
+        companyScope.companyId,
         cutoff,
       );
       if (withRecent.length) {
@@ -195,8 +198,14 @@ export async function GET(req: Request) {
       orderBy: { createdAt: 'desc' },
       take,
       skip,
+      include: {
+        ...leadActivityDomainsInclude,
+        ...(hasGroupCompanyScope(user.role)
+          ? { company: { select: { id: true, name: true } } }
+          : {}),
+      },
     });
-    return NextResponse.json(leads);
+    return NextResponse.json(leads.map(serializeLeadWithActivityDomains));
   } catch (error) {
     console.error('GET /api/leads error', error);
     return NextResponse.json(
@@ -221,6 +230,7 @@ export async function POST(req: Request) {
 
     const json = await req.json();
     const body = createLeadSchema.parse(json);
+    const activityDomains = normalizeActivityDomainsInput(body.activityDomains);
 
     const lead = await prisma.lead.create({
       data: {
@@ -230,7 +240,13 @@ export async function POST(req: Request) {
         email: body.email,
         source: body.source,
         civility: body.civility,
-        activityDomain: body.activityDomain,
+        activitySector: body.activitySector,
+        activityDomains:
+          activityDomains.length > 0
+            ? {
+                create: activityDomains.map((domain) => ({ domain })),
+              }
+            : undefined,
         companyName: body.companyName,
         jobTitle: body.jobTitle,
         location: body.location,
@@ -253,6 +269,7 @@ export async function POST(req: Request) {
         // On rattache toujours le lead à la société de l'utilisateur connecté.
         companyId: user.companyId,
       },
+      include: leadActivityDomainsInclude,
     });
 
     await prisma.activity.create({
@@ -284,7 +301,21 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json(lead, { status: 201 });
+    await logUserAction({
+      user,
+      action: USER_ACTION_CODES.LEAD_CREATE,
+      entityType: 'Lead',
+      entityId: lead.id,
+      summary: `Création du prospect ${formatLeadName(lead.firstName, lead.lastName)}`,
+      metadata: {
+        label: formatLeadName(lead.firstName, lead.lastName),
+        status: lead.status,
+      },
+    });
+
+    return NextResponse.json(serializeLeadWithActivityDomains(lead), {
+      status: 201,
+    });
   } catch (error) {
     console.error('POST /api/leads error', error);
     return NextResponse.json(
@@ -316,7 +347,7 @@ export async function PATCH(req: Request) {
           ? { id: body.id }
           : null
         : await prisma.lead.findFirst({
-            where: { id: body.id, companyId: user.companyId },
+            where: { id: body.id, companyId: user.companyId, ...activeOnlyWhere },
             select: { id: true },
           });
     if (!existing) {
@@ -325,6 +356,11 @@ export async function PATCH(req: Request) {
         { status: 404 },
       );
     }
+
+    const activityDomains =
+      body.activityDomains !== undefined
+        ? normalizeActivityDomainsInput(body.activityDomains)
+        : undefined;
 
     const lead = await prisma.lead.update({
       where: { id: body.id },
@@ -335,14 +371,20 @@ export async function PATCH(req: Request) {
         email: body.email,
         source: body.source,
         civility: body.civility,
-        activityDomain: body.activityDomain,
+        activitySector: body.activitySector,
         companyName: body.companyName,
         jobTitle: body.jobTitle,
         location: body.location,
         notes: body.notes,
         status: body.status,
         assignedTo: body.assignedTo,
-        // si fourni, on remplace complètement les associations
+        activityDomains:
+          activityDomains !== undefined
+            ? {
+                deleteMany: {},
+                create: activityDomains.map((domain) => ({ domain })),
+              }
+            : undefined,
         products: body.productIds
           ? {
               set: body.productIds.map((id) => ({ id })),
@@ -354,9 +396,22 @@ export async function PATCH(req: Request) {
             }
           : undefined,
       },
+      include: leadActivityDomainsInclude,
     });
 
-    return NextResponse.json(lead);
+    await logUserAction({
+      user,
+      action: USER_ACTION_CODES.LEAD_UPDATE,
+      entityType: 'Lead',
+      entityId: lead.id,
+      summary: `Modification du prospect ${formatLeadName(lead.firstName, lead.lastName)}`,
+      metadata: {
+        label: formatLeadName(lead.firstName, lead.lastName),
+        status: lead.status,
+      },
+    });
+
+    return NextResponse.json(serializeLeadWithActivityDomains(lead));
   } catch (error) {
     console.error('PATCH /api/leads error', error);
     return NextResponse.json(
@@ -392,8 +447,8 @@ export async function DELETE(req: Request) {
           ? { id }
           : null
         : await prisma.lead.findFirst({
-            where: { id, companyId: user.companyId },
-            select: { id: true },
+            where: { id, companyId: user.companyId, deletedAt: null },
+            select: { id: true, firstName: true, lastName: true },
           });
     if (!existing) {
       return NextResponse.json(
@@ -402,7 +457,28 @@ export async function DELETE(req: Request) {
       );
     }
 
-    await prisma.lead.delete({ where: { id } });
+    await softDeleteLead(user.id, id);
+
+    if (existing && 'firstName' in existing) {
+      await logUserAction({
+        user,
+        action: USER_ACTION_CODES.LEAD_DELETE,
+        entityType: 'Lead',
+        entityId: id,
+        summary: `Mise en corbeille du prospect ${formatLeadName(existing.firstName, existing.lastName)}`,
+        metadata: {
+          label: formatLeadName(existing.firstName, existing.lastName),
+        },
+      });
+    } else {
+      await logUserAction({
+        user,
+        action: USER_ACTION_CODES.LEAD_DELETE,
+        entityType: 'Lead',
+        entityId: id,
+        summary: 'Mise en corbeille d\'un prospect',
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

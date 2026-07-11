@@ -1,25 +1,37 @@
 'use client';
 
-import type { LeadDemographicsResponse } from '@/app/api/dashboard/lead-demographics/route';
+import type { LeadDemographicsResponse } from '@/lib/lead-demographics-report';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchApi } from '@/lib/fetch-api';
 import { LABEL_NONE } from '@/lib/lead-demographics';
-import { LocationBarCard } from '@/components/ui/chart-location-bars';
+import { DemographicBarCard } from '@/components/ui/chart-location-bars';
 import {
   MarketShareCard,
   TotalProspectsKpiCard,
   type DonutDatum,
 } from '@/components/ui/chart-pie-donut-generic';
+import { Briefcase, MapPin } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 type LeadDemographicsSectionProps = {
   companyId?: string;
+  userId?: string;
   scopeLabel?: string;
 };
 
-function hasMeaningfulLocationRows(rows: DonutDatum[]): boolean {
+function hasMeaningfulBarRows(rows: DonutDatum[]): boolean {
   const withData = rows.filter((r) => r.count > 0);
   if (withData.length === 0) return false;
   if (withData.length === 1 && withData[0].label === LABEL_NONE) return false;
   return true;
+}
+
+function EmptyBarPlaceholder({ message }: { message: string }) {
+  return (
+    <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5 min-h-[280px] flex items-center justify-center'>
+      <p className='text-xs text-gray-500 text-center px-4'>{message}</p>
+    </div>
+  );
 }
 
 function DemographicsSkeleton() {
@@ -33,15 +45,21 @@ function DemographicsSkeleton() {
           />
         ))}
       </div>
-      <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5 min-h-[280px] animate-pulse' />
+      <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
+        <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5 min-h-[280px] animate-pulse' />
+        <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5 min-h-[280px] animate-pulse' />
+      </div>
     </div>
   );
 }
 
 export function LeadDemographicsSection({
   companyId,
+  userId,
   scopeLabel,
 }: LeadDemographicsSectionProps) {
+  const { user: authUser } = useAuth();
+
   const [data, setData] = useState<LeadDemographicsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,11 +72,14 @@ export function LeadDemographicsSection({
       if (companyId?.trim()) {
         params.set('companyId', companyId.trim());
       }
+      if (userId?.trim()) {
+        params.set('userId', userId.trim());
+      }
       const qs = params.toString();
       const url = qs
         ? `/api/dashboard/lead-demographics?${qs}`
         : '/api/dashboard/lead-demographics';
-      const res = await fetch(url, { cache: 'no-store' });
+      const res = await fetchApi(url, { cache: 'no-store' });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         setData(null);
@@ -76,7 +97,7 @@ export function LeadDemographicsSection({
     } finally {
       setLoading(false);
     }
-  }, [companyId]);
+  }, [companyId, userId]);
 
   useEffect(() => {
     void fetchDemographics();
@@ -92,9 +113,12 @@ export function LeadDemographicsSection({
     };
   }, [fetchDemographics]);
 
-  const kpiScope = scopeLabel ?? 'Périmètre actuel';
+  const kpiScope =
+    scopeLabel ?? authUser?.company?.name ?? 'Périmètre actuel';
   const locationRows = (data?.byLocation ?? []) as DonutDatum[];
-  const showLocationChart = hasMeaningfulLocationRows(locationRows);
+  const jobTitleRows = (data?.byJobTitle ?? []) as DonutDatum[];
+  const showLocationChart = hasMeaningfulBarRows(locationRows);
+  const showJobTitleChart = hasMeaningfulBarRows(jobTitleRows);
 
   return (
     <section className='mt-4'>
@@ -104,10 +128,10 @@ export function LeadDemographicsSection({
             Répartition des prospects
           </h2>
           <p className='text-xs text-gray-500 mt-0.5'>
-            Civilité, domaine d&apos;activités et situation géographique
+            Civilité, secteur d&apos;activités, situation géographique et poste
           </p>
         </div>
-        {!loading && data && data.total > 0 && (
+        {(scopeLabel || (!loading && data && data.total > 0)) && (
           <span
             className='inline-flex items-center self-start rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] text-gray-600 shadow-sm'
             title={kpiScope}
@@ -139,25 +163,39 @@ export function LeadDemographicsSection({
             <MarketShareCard
               title='Par civilité'
               rows={data.byCivility as DonutDatum[]}
+              centerMetric='categoryCount'
             />
 
             <MarketShareCard
-              title="Par domaine d'activités"
-              rows={data.byActivityDomain as DonutDatum[]}
+              title="Par secteur d'activités"
+              rows={data.byActivitySector as DonutDatum[]}
+              centerMetric='categoryCount'
             />
           </div>
 
-          {showLocationChart ? (
-            <LocationBarCard rows={locationRows} />
-          ) : (
-            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5 min-h-[120px] flex items-center justify-center'>
-              <p className='text-xs text-gray-500 text-center px-4'>
-                Aucune situation géographique renseignée sur les prospects de
-                ce périmètre. Complétez le champ « Situation géographique » sur
-                vos fiches leads.
-              </p>
-            </div>
-          )}
+          <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
+            {showLocationChart ? (
+              <DemographicBarCard
+                title='Par situation géographique'
+                rows={locationRows}
+                icon={MapPin}
+                emptyMessage='Aucune situation géographique renseignée pour ce périmètre.'
+              />
+            ) : (
+              <EmptyBarPlaceholder message='Aucune situation géographique renseignée sur les prospects de ce périmètre. Complétez le champ « Situation géographique » sur vos fiches leads.' />
+            )}
+
+            {showJobTitleChart ? (
+              <DemographicBarCard
+                title='Par poste du prospect'
+                rows={jobTitleRows}
+                icon={Briefcase}
+                emptyMessage='Aucun poste renseigné pour ce périmètre.'
+              />
+            ) : (
+              <EmptyBarPlaceholder message='Aucun poste renseigné sur les prospects de ce périmètre. Complétez le champ « Poste / fonction » sur vos fiches leads.' />
+            )}
+          </div>
         </div>
       )}
     </section>

@@ -1,3 +1,5 @@
+import { getCurrentUser } from '@/lib/auth';
+import { logUserAction, USER_ACTION_CODES } from '@/lib/user-action-log';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -126,6 +128,18 @@ export async function PUT(
 
     if (result.notFound) {
       return NextResponse.json({ error: 'Lead introuvable' }, { status: 404 });
+    }
+
+    const authUser = await getCurrentUser();
+    if (authUser) {
+      await logUserAction({
+        user: authUser,
+        action: USER_ACTION_CODES.LEAD_INTERESTS_UPDATE,
+        entityType: 'Lead',
+        entityId: leadId,
+        summary: 'Mise à jour des intérêts produits/services du prospect',
+        metadata: { counts: result.counts },
+      });
     }
 
     return NextResponse.json({

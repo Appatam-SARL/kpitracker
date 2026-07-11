@@ -65,7 +65,8 @@ interface LeadDetail {
   companyName?: string | null;
   jobTitle?: string | null;
   location?: string | null;
-  activityDomain?: string | null;
+  activitySector?: string | null;
+  activityDomains?: string[];
   notes?: string | null;
   civility?: string | null;
   status: string;
@@ -498,7 +499,8 @@ export default function LeadDetailPage({
     companyName: lead.companyName ?? lead.company?.name,
     jobTitle: lead.jobTitle,
     location: lead.location,
-    activityDomain: lead.activityDomain,
+    activitySector: lead.activitySector,
+    activityDomains: lead.activityDomains ?? [],
     civility: lead.civility,
   };
 
@@ -801,10 +803,20 @@ export default function LeadDetailPage({
                   </div>
                   <div className='flex justify-between'>
                     <span className='text-gray-500'>
+                      Secteur d&apos;activités
+                    </span>
+                    <span className='text-gray-700'>
+                      {lead.activitySector ?? '—'}
+                    </span>
+                  </div>
+                  <div className='flex justify-between'>
+                    <span className='text-gray-500'>
                       Domaine d&apos;activités
                     </span>
                     <span className='text-gray-700'>
-                      {lead.activityDomain ?? '—'}
+                      {lead.activityDomains?.length
+                        ? lead.activityDomains.join(', ')
+                        : '—'}
                     </span>
                   </div>
                   <div className='flex justify-between items-center gap-2'>

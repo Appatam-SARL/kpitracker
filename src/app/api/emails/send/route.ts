@@ -13,6 +13,7 @@ import {
 } from "@/lib/email-signature";
 import { embedSignatureImageAsCid } from "@/lib/email-signature-server";
 import { emailHtmlToPlainSummary } from "@/lib/email-html-shared";
+import { logUserAction, USER_ACTION_CODES } from "@/lib/user-action-log";
 
 const sendEmailSchema = z.object({
   leadId: z.string().min(1),
@@ -92,6 +93,7 @@ export async function POST(req: Request) {
       select: {
         id: true,
         name: true,
+        companyId: true,
         emailSignature: true,
       },
     });
@@ -238,6 +240,17 @@ export async function POST(req: Request) {
           description: `Email envoyé — voir activité ${activity.id}`,
           dueDate: due,
         },
+      });
+    }
+
+    if (user.companyId) {
+      await logUserAction({
+        user: { id: user.id, companyId: user.companyId },
+        action: USER_ACTION_CODES.EMAIL_SEND,
+        entityType: 'Lead',
+        entityId: body.leadId,
+        summary: `Envoi d'un email au prospect (${body.subject})`,
+        metadata: { label: body.subject, to: body.to },
       });
     }
 

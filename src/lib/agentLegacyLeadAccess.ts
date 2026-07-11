@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
+import { activeOnlyWhere } from '@/lib/trash';
 
 const LEGACY_CREATION_ACTIVITY_PATTERNS = [
   '%lead créé manuellement%',
@@ -27,6 +28,7 @@ export async function getLegacyUnassignedLeadIdsForAgent(
       SELECT l.id
       FROM "Lead" l
       WHERE l."companyId" = ${companyId}
+        AND l."deletedAt" IS NULL
         AND l."assignedTo" IS NULL
         AND (
           SELECT a."userId"
@@ -57,6 +59,7 @@ export async function agentCanAccessUnassignedLegacyLead(
       FROM "Lead" l
       WHERE l.id = ${leadId}
         AND l."companyId" = ${companyId}
+        AND l."deletedAt" IS NULL
         AND l."assignedTo" IS NULL
         AND (
           SELECT a."userId"
@@ -77,20 +80,35 @@ export async function agentCanAccessUnassignedLegacyLead(
   return rows.length > 0;
 }
 
-/** Leads de la société ayant au moins une activité (liée par leadId ou relatedTo) depuis cutoff. */
+/** Leads d'une ou plusieurs sociétés ayant au moins une activité depuis cutoff. */
 export async function getLeadIdsWithActivitySinceInCompany(
-  companyId: string,
+  companyId: string | { in: string[] },
   cutoff: Date,
 ): Promise<string[]> {
-  const rows = await prisma.$queryRaw<Array<{ id: string }>>(
-    Prisma.sql`
+  const rows =
+    typeof companyId === 'string'
+      ? await prisma.$queryRaw<Array<{ id: string }>>(
+          Prisma.sql`
       SELECT DISTINCT l.id
       FROM "Lead" l
       INNER JOIN "Activity" a ON (a."leadId" = l.id OR a."relatedTo" = l.id)
       WHERE l."companyId" = ${companyId}
+        AND l."deletedAt" IS NULL
         AND a.date >= ${cutoff}
     `,
-  );
+        )
+      : companyId.in.length === 0
+        ? []
+        : await prisma.$queryRaw<Array<{ id: string }>>(
+            Prisma.sql`
+      SELECT DISTINCT l.id
+      FROM "Lead" l
+      INNER JOIN "Activity" a ON (a."leadId" = l.id OR a."relatedTo" = l.id)
+      WHERE l."companyId" IN (${Prisma.join(companyId.in)})
+        AND l."deletedAt" IS NULL
+        AND a.date >= ${cutoff}
+    `,
+          );
   return rows.map((r) => r.id);
 }
 
@@ -101,7 +119,7 @@ export async function agentCanModifyLead(
   agentUserId: string,
 ): Promise<boolean> {
   const lead = await prisma.lead.findFirst({
-    where: { id: leadId, companyId },
+    where: { id: leadId, companyId, ...activeOnlyWhere },
     select: { assignedTo: true },
   });
   if (!lead) return false;

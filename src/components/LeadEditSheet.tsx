@@ -3,10 +3,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import NeumoCard from "./NeumoCard";
 import { Field } from "./ui/field";
+import ActivityDomainsChecklist from "./ActivityDomainsChecklist";
 import InteractionHistory from "./InteractionHistory";
 import type { Lead } from "./LeadCard";
 import {
-  DEFAULT_ACTIVITY_DOMAINS,
+  DEFAULT_ACTIVITY_SECTORS,
   DEFAULT_CIVILITIES,
   DEFAULT_LEAD_SOURCES,
 } from "@/config/lead-options";
@@ -39,9 +40,13 @@ export default function LeadEditSheet({ open, lead, onClose, onUpdated, onDelete
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [productsTouched, setProductsTouched] = useState(false);
   const [servicesTouched, setServicesTouched] = useState(false);
+  const [selectedActivityDomains, setSelectedActivityDomains] = useState<string[]>(
+    lead?.activityDomains ?? [],
+  );
 
   useEffect(() => {
     if (!open || !lead) return;
+    setSelectedActivityDomains(lead.activityDomains ?? []);
 
     const fetchInterests = async () => {
       try {
@@ -107,7 +112,7 @@ export default function LeadEditSheet({ open, lead, onClose, onUpdated, onDelete
     const companyName = String(data.get("companyName") || "");
     const jobTitle = String(data.get("jobTitle") || "");
     const location = String(data.get("location") || "");
-    const activityDomain = String(data.get("activityDomain") || "");
+    const activitySector = String(data.get("activitySector") || "");
     const civility = String(data.get("civility") || "");
     const notes = String(data.get("notes") || "");
 
@@ -128,7 +133,8 @@ export default function LeadEditSheet({ open, lead, onClose, onUpdated, onDelete
           companyName: companyName || undefined,
           jobTitle: jobTitle || undefined,
           location: location || undefined,
-          activityDomain: activityDomain || undefined,
+          activitySector: activitySector || undefined,
+          activityDomains: selectedActivityDomains,
           civility: civility || undefined,
           notes: notes || undefined,
           status,
@@ -153,7 +159,12 @@ export default function LeadEditSheet({ open, lead, onClose, onUpdated, onDelete
   };
 
   const handleDelete = async () => {
-    if (!confirm("Supprimer ce lead ?")) return;
+    if (
+      !confirm(
+        'Mettre ce prospect à la corbeille ? Il pourra être restauré par un responsable.',
+      )
+    )
+      return;
     setLoading(true);
     setError(null);
 
@@ -260,16 +271,20 @@ export default function LeadEditSheet({ open, lead, onClose, onUpdated, onDelete
                 ))}
               </datalist>
               <Field
-                name="activityDomain"
-                label="Domaine d'activités"
-                defaultValue={lead.activityDomain ?? ""}
-                list="lead-activity-options"
+                name="activitySector"
+                label="Secteur d'activités"
+                defaultValue={lead.activitySector ?? ""}
+                list="lead-activity-sector-options"
               />
-              <datalist id="lead-activity-options">
-                {DEFAULT_ACTIVITY_DOMAINS.map((domain) => (
-                  <option key={domain} value={domain} />
+              <datalist id="lead-activity-sector-options">
+                {DEFAULT_ACTIVITY_SECTORS.map((sector) => (
+                  <option key={sector} value={sector} />
                 ))}
               </datalist>
+              <ActivityDomainsChecklist
+                selected={selectedActivityDomains}
+                onChange={setSelectedActivityDomains}
+              />
               <Field
                 name="civility"
                 label="Civilité"
@@ -368,7 +383,7 @@ export default function LeadEditSheet({ open, lead, onClose, onUpdated, onDelete
                   onClick={handleDelete}
                   className="px-3 py-1.5 rounded-full text-[11px] bg-rose-50 text-rose-600"
                 >
-                  Supprimer le lead
+                  Mettre à la corbeille
                 </button>
                 <div className="flex gap-2">
                   <button

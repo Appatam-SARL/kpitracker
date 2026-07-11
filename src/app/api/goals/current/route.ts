@@ -1,10 +1,18 @@
 import { getCurrentUser, resolveGroupCompanyScope } from '@/lib/auth';
-import { hasGroupCompanyScope } from '@/lib/group-scope-roles';
+import {
+  hasGroupCompanyScope,
+  prismaCompanyScopeFilter,
+  userCompanyInScope,
+} from '@/lib/group-scope-roles';
 import { getPeriodLabel } from '@/lib/goalPeriods';
+import { activeOnlyWhere } from '@/lib/trash';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 
 type GoalCurrentDto = {
+  id: string;
+  periodType: 'MONTH' | 'QUARTER' | 'SEMESTER' | 'YEAR';
+  periodStart: string;
   user: { id: string; name: string; email: string };
   periodLabel: string;
   targetConversions: number;
@@ -49,6 +57,9 @@ async function withRealized(goal: {
   const realizedRevenue = realizedRevenueResult._sum.amount ?? 0;
 
   return {
+    id: goal.id,
+    periodType: goal.periodType,
+    periodStart: goal.periodStart.toISOString(),
     user: goal.user,
     periodLabel: getPeriodLabel(goal.periodType, goal.periodStart),
     targetConversions: goal.targetConversions,
@@ -87,6 +98,7 @@ export async function GET(req: Request) {
         userId: currentUser.id,
         periodStart: { lte: now },
         periodEnd: { gte: now },
+        ...activeOnlyWhere,
       },
       include: {
         user: { select: { id: true, name: true, email: true } },
@@ -111,12 +123,24 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Accès refusé' }, { status: 403 });
   }
 
+  const companyIdParam = url.searchParams.get('companyId');
+  const scopeCompanyId =
+    companyIdParam ??
+    (userIdParam
+      ? (
+          await prisma.user.findUnique({
+            where: { id: userIdParam },
+            select: { companyId: true },
+          })
+        )?.companyId ?? null
+      : null);
+
   const scopeRes = await resolveGroupCompanyScope(
     currentUser,
-    url.searchParams.get('companyId'),
+    hasGroupCompanyScope(currentUser.role) ? scopeCompanyId : companyIdParam,
   );
   if (scopeRes instanceof NextResponse) return scopeRes;
-  const scopeCompanyId = scopeRes.companyId;
+  const companyScope = prismaCompanyScopeFilter(scopeRes);
 
   // Cas 2: + userId => objectif courant unique ou null
   if (userIdParam) {
@@ -124,7 +148,7 @@ export async function GET(req: Request) {
       where: { id: userIdParam },
       select: { id: true, companyId: true, name: true, email: true },
     });
-    if (!targetUser || targetUser.companyId !== scopeCompanyId) {
+    if (!targetUser || !userCompanyInScope(targetUser.companyId, scopeRes)) {
       return NextResponse.json(
         { error: 'Utilisateur non trouvé ou autre entreprise' },
         { status: 403 },
@@ -133,10 +157,11 @@ export async function GET(req: Request) {
 
     const goal = await prisma.salesGoal.findFirst({
       where: {
-        companyId: scopeCompanyId,
+        ...companyScope,
         userId: targetUser.id,
         periodStart: { lte: now },
         periodEnd: { gte: now },
+        ...activeOnlyWhere,
       },
       include: {
         user: { select: { id: true, name: true, email: true } },
@@ -155,9 +180,10 @@ export async function GET(req: Request) {
   // Cas 3: sans userId => tableau des objectifs courants (un par userId)
   const goals = await prisma.salesGoal.findMany({
     where: {
-      companyId: scopeCompanyId,
+      ...companyScope,
       periodStart: { lte: now },
       periodEnd: { gte: now },
+      ...activeOnlyWhere,
     },
     include: {
       user: { select: { id: true, name: true, email: true } },

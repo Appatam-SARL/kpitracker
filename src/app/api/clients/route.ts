@@ -1,5 +1,10 @@
 import { getCurrentUser } from "@/lib/auth";
-import { CONVERT_REQUIRES_PIVOT_INTERESTS_MESSAGE } from "@/lib/lead-conversion";
+import { logUserAction, USER_ACTION_CODES } from "@/lib/user-action-log";
+import {
+  buildConversionSaleItems,
+  computeLeadInterestsRevenue,
+  CONVERT_REQUIRES_PIVOT_INTERESTS_MESSAGE,
+} from "@/lib/lead-conversion";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -81,6 +86,10 @@ export async function POST(req: Request) {
             service: { select: { name: true } },
           },
         },
+        activityDomains: {
+          select: { domain: true },
+          orderBy: { domain: 'asc' },
+        },
       },
     });
 
@@ -100,6 +109,12 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+
+    const conversionRevenue = computeLeadInterestsRevenue(
+      lead.productInterests,
+      lead.serviceInterests,
+    );
+    const conversionDate = new Date();
 
     const result = await prisma.$transaction(async (tx: PrismaTx) => {
       const customProductInterests = lead.productInterests.filter(
@@ -136,15 +151,38 @@ export async function POST(req: Request) {
           phone: lead.phone || undefined,
           source: lead.source || undefined,
           civility: lead.civility || undefined,
-          activityDomain: lead.activityDomain || undefined,
+          activityDomain:
+            lead.activityDomains.length > 0
+              ? lead.activityDomains.map((d) => d.domain).join(', ')
+              : undefined,
           companyName: lead.companyName ?? lead.company?.name,
           location: lead.location || undefined,
           notes: appendedCustomInterestsNotes || undefined,
           companyId: lead.companyId,
           convertedById: user.id,
-          convertedAt: new Date(),
+          convertedAt: conversionDate,
+          totalRevenue: conversionRevenue,
         },
       });
+
+      if (conversionRevenue > 0) {
+        const saleItems = buildConversionSaleItems(
+          lead.productInterests,
+          lead.serviceInterests,
+        );
+        await tx.sale.create({
+          data: {
+            clientId: client.id,
+            userId: user.id,
+            companyId: lead.companyId,
+            date: conversionDate,
+            amount: conversionRevenue,
+            ...(saleItems.length > 0
+              ? { items: { create: saleItems } }
+              : {}),
+          },
+        });
+      }
 
       // Si des produits / services étaient déjà renseignés sur le lead,
       // on les initialise comme intérêts du client avec une valeur estimative issue du lead.
@@ -193,6 +231,15 @@ export async function POST(req: Request) {
       });
 
       return { client, lead: updatedLead };
+    });
+
+    await logUserAction({
+      user,
+      action: USER_ACTION_CODES.CLIENT_CREATE,
+      entityType: 'Client',
+      entityId: result.client.id,
+      summary: `Conversion du prospect en client : ${result.client.name}`,
+      metadata: { label: result.client.name, leadId: result.lead.id },
     });
 
     return NextResponse.json(result, { status: 201 });

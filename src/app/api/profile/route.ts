@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { logUserAction, USER_ACTION_CODES } from "@/lib/user-action-log";
 import { z } from "zod";
 
 const updateProfileSchema = z.object({
@@ -41,6 +42,14 @@ export async function PATCH(req: Request) {
           select: { id: true, name: true },
         },
       },
+    });
+
+    await logUserAction({
+      user: authUser,
+      action: USER_ACTION_CODES.PROFILE_UPDATE,
+      entityType: 'User',
+      entityId: authUser.id,
+      summary: 'Mise à jour du profil (nom ou email)',
     });
 
     return NextResponse.json(updated);

@@ -1,3 +1,5 @@
+import { getCurrentUser } from '@/lib/auth';
+import { logUserAction, USER_ACTION_CODES } from '@/lib/user-action-log';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -230,6 +232,17 @@ export async function PUT(
           });
         }
       });
+
+      const authUser = await getCurrentUser();
+      if (authUser) {
+        await logUserAction({
+          user: authUser,
+          action: USER_ACTION_CODES.CLIENT_INTERESTS_UPDATE,
+          entityType: 'Client',
+          entityId: id,
+          summary: `Mise à jour des intérêts client (${validItems.length} élément(s))`,
+        });
+      }
 
       return NextResponse.json({
         ok: true,

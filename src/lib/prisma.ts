@@ -1,10 +1,17 @@
+import { loadEnvForPrisma } from "../../prisma/load-env";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-// Adapter PostgreSQL pour Prisma 7 (moteur \"client\")
+// cPanel : variables souvent uniquement dans .env sur disque
+if (!process.env.DATABASE_URL) {
+  loadEnvForPrisma();
+}
+
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
-  throw new Error("DATABASE_URL manquant dans l'environnement");
+  throw new Error(
+    "DATABASE_URL manquant. Définissez-le dans cPanel (Node.js App) ou dans .env à la racine du projet.",
+  );
 }
 
 const adapter = new PrismaPg({ connectionString });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth";
+import { logUserAction, USER_ACTION_CODES } from "@/lib/user-action-log";
 
 const ACTIVITY_TYPES = ["CALL", "EMAIL", "WHATSAPP", "MEETING", "NOTE"] as const;
 
@@ -93,6 +94,15 @@ export async function POST(req: Request) {
       include: {
         user: { select: { name: true } },
       },
+    });
+
+    await logUserAction({
+      user,
+      action: USER_ACTION_CODES.ACTIVITY_CREATE,
+      entityType: 'Activity',
+      entityId: activity.id,
+      summary: `Ajout d'une interaction (${body.type}) sur un prospect`,
+      metadata: { label: body.type, leadId: body.leadId },
     });
 
     return NextResponse.json(activity, { status: 201 });

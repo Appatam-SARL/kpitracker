@@ -1,6 +1,21 @@
 'use client';
 
 import {
+  LEAD_IMPORT_HEADERS_HELP,
+  type LeadImportRow,
+  buildImportHeaderMap,
+  createEmptyImportRow,
+} from '@/config/lead-import-template';
+import {
+  LEAD_IMPORT_SHEET_NOT_FOUND_ERROR,
+  downloadLeadImportTemplate,
+  resolveLeadImportSheet,
+} from '@/lib/lead-import-excel';
+import {
+  excelRowNumber,
+  validateAndNormalizeLeadImportLists,
+} from '@/lib/lead-import-validation';
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -17,132 +32,17 @@ import {
 } from '@/components/ui/table';
 import { useRef, useState } from 'react';
 
-export interface ImportRow {
-  /** Nom de l'entreprise (colonne Nom entreprise, Raison sociale, etc.) */
-  companyName: string;
-  /** Téléphone (colonne Contact, Téléphone, Phone, etc.) */
-  phone?: string;
-  /** Personne de contact (colonne Reçu par) */
-  receivedBy?: string;
-  /** Domaine d'activités (colonne Domaine d'activités) */
-  domain?: string;
-  /** Poste / fonction dans l'entreprise */
-  jobTitle?: string;
-  /** Adresse / localisation (colonne Situation géographique, Localisation, etc.) */
-  location?: string;
-  /** Observation / notes libres */
-  observation?: string;
-  /** Civilité (M., Mme...) */
-  civility?: string;
-  /** Email (colonne email) */
-  email?: string;
-  /** Colonne "nom" (ex. Nguessan, Zile) → Lead.firstName */
-  firstName?: string;
-  /** Colonne "prenoms" (ex. Jean Modeste, Kouassi) → Lead.lastName */
-  lastName?: string;
-}
+export type { LeadImportRow };
 
 interface LeadImportSheetProps {
   open: boolean;
   onClose: () => void;
-  onImported?: (count: number) => void;
+  /** Société cible (rôles périmètre groupe), aligné sur l&apos;export. */
+  companyId?: string | null;
+  onImported?: (summary: { created: number; updated: number }) => void;
 }
 
-/** Normalise un en-tête Excel pour le comparer de façon robuste. */
-function normalizeHeader(header: string): string {
-  return header
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .replace(/[^a-z0-9]/g, '');
-}
-
-/** Classe un en-tête normalisé vers un champ logique.
- *
- * On se base sur le texte de l'en-tête (sans accents, en minuscules)
- * pour déterminer s'il s'agit de :
- *  - Nom entreprise (companyName)
- *  - nom / prenoms (colonnes H et I du fichier prospect) → firstName / lastName
- *  - Contact téléphone, etc.
- */
-function classifyHeader(normalized: string): keyof ImportRow | undefined {
-  // Nom de l'entreprise : "Nom entreprise", "Raison sociale", ...
-  if (
-    normalized.includes('nomentreprise') ||
-    (normalized.includes('entreprise') && !normalized.includes('domaine'))
-  ) {
-    return 'companyName';
-  }
-  // Colonne "nom" (BASE DE DONNEES PROSPECT.xlsx) → Lead.firstName
-  if (
-    normalized === 'nom' ||
-    (normalized.includes('nom') &&
-      !normalized.includes('entreprise') &&
-      !normalized.includes('domaine'))
-  ) {
-    return 'firstName';
-  }
-  // Colonne "prenoms" (BASE DE DONNEES PROSPECT.xlsx) → Lead.lastName
-  if (
-    normalized === 'prenoms' ||
-    normalized === 'prenom' ||
-    normalized.includes('prenom')
-  ) {
-    return 'lastName';
-  }
-  // email
-  if (normalized.includes('email') || normalized === 'mail') {
-    return 'email';
-  }
-  if (
-    normalized === 'contact' ||
-    normalized.includes('telephone') ||
-    normalized.includes('tel') ||
-    normalized.includes('phone')
-  ) {
-    return 'phone';
-  }
-  if (
-    normalized.includes('recup') ||
-    normalized.includes('recupar') ||
-    normalized.includes('recupart') ||
-    normalized.includes('personne')
-  ) {
-    return 'receivedBy';
-  }
-  // civilité / titre (M., Mme, etc.)
-  if (
-    normalized.includes('civilite') ||
-    normalized.includes('civility') ||
-    normalized.includes('titre')
-  ) {
-    return 'civility';
-  }
-  if (normalized.includes('domaine') || normalized.includes('activite')) {
-    return 'domain';
-  }
-  if (
-    normalized.includes('poste') ||
-    normalized.includes('fonction') ||
-    normalized.includes('jobtitle')
-  ) {
-    return 'jobTitle';
-  }
-  if (
-    normalized.includes('situationgeographique') ||
-    normalized.includes('localisation') ||
-    normalized.includes('lieu') ||
-    normalized.includes('adresse')
-  ) {
-    return 'location';
-  }
-  if (normalized.includes('observation') || normalized.includes('note')) {
-    return 'observation';
-  }
-  return undefined;
-}
-
-function parseExcelFile(file: File): Promise<ImportRow[]> {
+function parseExcelFile(file: File): Promise<LeadImportRow[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -152,40 +52,32 @@ function parseExcelFile(file: File): Promise<ImportRow[]> {
           reject(new Error('Fichier illisible'));
           return;
         }
-        // Import dynamique pour éviter erreur de build si xlsx n'est pas installé
         import('xlsx')
           .then((XLSX) => {
             const wb = XLSX.read(data, { type: 'array' });
-            const firstSheet = wb.Sheets[wb.SheetNames[0]];
-            if (!firstSheet) {
+            const dataSheet = resolveLeadImportSheet(XLSX, wb);
+            if (!dataSheet) {
               reject(new Error('Aucune feuille trouvée'));
               return;
             }
             const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
-              firstSheet,
-              {
-                defval: '',
-                raw: false,
-              },
+              dataSheet,
+              { defval: '', raw: false },
             );
             if (!rows.length) {
               resolve([]);
               return;
             }
 
-            // Construire une table de correspondance en-tête -> champ logique à partir de la première ligne.
-            const headerMap: Record<string, keyof ImportRow> = {};
-            for (const key of Object.keys(rows[0])) {
-              const norm = normalizeHeader(key);
-              const field = classifyHeader(norm);
-              if (field) {
-                headerMap[key] = field;
-              }
+            const headerMap = buildImportHeaderMap(Object.keys(rows[0]));
+            if (Object.keys(headerMap).length === 0) {
+              reject(new Error(LEAD_IMPORT_SHEET_NOT_FOUND_ERROR));
+              return;
             }
 
-            const mapped: ImportRow[] = rows.map((row) => {
-              const result: ImportRow = { companyName: '' };
-              const resultAny = result as unknown as Record<string, unknown>;
+            const mapped: LeadImportRow[] = rows.map((row) => {
+              const result = createEmptyImportRow();
+              const resultAny = result as Record<string, string | undefined>;
               for (const [key, value] of Object.entries(row)) {
                 const field = headerMap[key];
                 if (!field) continue;
@@ -218,9 +110,10 @@ function parseExcelFile(file: File): Promise<ImportRow[]> {
 export default function LeadImportSheet({
   open,
   onClose,
+  companyId,
   onImported,
 }: LeadImportSheetProps) {
-  const [rows, setRows] = useState<ImportRow[]>([]);
+  const [rows, setRows] = useState<LeadImportRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -229,6 +122,7 @@ export default function LeadImportSheet({
   >(null);
   const [importSummary, setImportSummary] = useState<{
     created: number;
+    updated: number;
     total: number;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -236,43 +130,11 @@ export default function LeadImportSheet({
   const handleDownloadTemplate = async () => {
     setError(null);
     try {
-      const XLSX = await import('xlsx');
-
-      const headerRow = [
-        'Civilité',
-        'Nom',
-        'Prenoms',
-        'Contact',
-        'Email',
-        "Nom de l'entreprise",
-        'Poste / Fonction',
-        "Domaine d'activités",
-        'Situation géographique',
-        'Observation',
-      ];
-
-      const exampleRow = [
-        'M.',
-        'Dupont',
-        'Jean',
-        '+225 01 23 45 67',
-        'contact@acme.ci',
-        'Acme Corp',
-        'Directeur commercial',
-        'Informatique / SaaS',
-        'Abidjan, Cocody',
-        'Client rencontré au salon X',
-      ];
-
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet([headerRow, exampleRow]);
-      XLSX.utils.book_append_sheet(wb, ws, 'Leads');
-      XLSX.writeFile(wb, 'modele_import_leads.xlsx');
+      await downloadLeadImportTemplate();
     } catch (e) {
       setError(
-        "Impossible de générer le modèle Excel. Veuillez réessayer plus tard.",
+        'Impossible de générer le modèle Excel. Veuillez réessayer plus tard.',
       );
-      // eslint-disable-next-line no-console
       console.error(e);
     }
   };
@@ -293,7 +155,7 @@ export default function LeadImportSheet({
       const parsed = await parseExcelFile(file);
       if (parsed.length === 0) {
         setError(
-          "Aucune ligne trouvée. Vérifiez les en-têtes : Civilité, Nom, Prenoms, Contact, Email, Nom de l'entreprise, Poste / Fonction, Domaine d'activités, Situation géographique, Observation.",
+          `Aucune ligne trouvée. Vérifiez les en-têtes : ${LEAD_IMPORT_HEADERS_HELP}.`,
         );
         setRows([]);
       } else {
@@ -314,15 +176,42 @@ export default function LeadImportSheet({
     if (rows.length === 0) return;
     setLoading(true);
     setUploadError(null);
+    setImportErrors(null);
+    setImportSummary(null);
+
+    const validationErrors: { row: number; message: string }[] = [];
+    rows.forEach((row, index) => {
+      const { errors } = validateAndNormalizeLeadImportLists(row);
+      for (const message of errors) {
+        validationErrors.push({ row: excelRowNumber(index), message });
+      }
+    });
+
+    if (validationErrors.length > 0) {
+      setImportErrors(validationErrors);
+      setImportSummary({ created: 0, updated: 0, total: rows.length });
+      setUploadError(
+        `${validationErrors.length} erreur(s) de validation détectée(s). Corrigez les valeurs indiquées dans votre fichier Excel (listes déroulantes des colonnes Civilité, Secteur, Domaine et Source), puis réessayez.`,
+      );
+      setLoading(false);
+      return;
+    }
+
     try {
+      const payload: { leads: LeadImportRow[]; companyId?: string } = {
+        leads: rows,
+      };
+      if (companyId) payload.companyId = companyId;
+
       const res = await fetch('/api/leads/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leads: rows }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Import impossible');
       const created = Number(data.created ?? 0);
+      const updated = Number(data.updated ?? 0);
       const total = Number(data.total ?? rows.length);
       const errors: { row: number; message: string }[] = Array.isArray(
         data.errors,
@@ -330,11 +219,13 @@ export default function LeadImportSheet({
         ? data.errors
         : [];
 
-      onImported?.(created);
+      if (created > 0 || updated > 0) {
+        onImported?.({ created, updated });
+      }
 
       if (errors.length > 0) {
         setImportErrors(errors);
-        setImportSummary({ created, total });
+        setImportSummary({ created, updated, total });
       } else {
         setRows([]);
         handleClose();
@@ -361,11 +252,10 @@ export default function LeadImportSheet({
         <SheetHeader>
           <SheetTitle>Importer des leads depuis un fichier Excel</SheetTitle>
           <SheetDescription>
-            Vous pouvez d&apos;abord télécharger le modèle Excel, le remplir
-            avec vos prospects, puis l&apos;importer ici. Colonnes attendues :
-            Civilité, Nom, Prenoms, Contact (téléphone), Email, Nom de
-            l&apos;entreprise, Poste / Fonction, Domaine d&apos;activités,
-            Situation géographique, Observation.
+            Exportez vos leads, corrigez le fichier Excel puis réimportez-le.
+            Une ligne avec la même entreprise et le même email ou téléphone
+            qu&apos;un prospect existant sera mise à jour ; les autres seront
+            créées. Colonnes : {LEAD_IMPORT_HEADERS_HELP}.
           </SheetDescription>
         </SheetHeader>
 
@@ -399,26 +289,26 @@ export default function LeadImportSheet({
             <p className='text-xs text-rose-600'>{uploadError}</p>
           )}
           {importSummary && importErrors && importErrors.length > 0 && (
-            <div className='rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800'>
+            <div className='rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 max-h-48 overflow-y-auto'>
               <p className='font-semibold mb-1'>
-                Certaines lignes n&apos;ont pas été importées
+                {importSummary.created === 0 && importSummary.updated === 0
+                  ? 'Import annulé — aucune ligne valide'
+                  : 'Certaines lignes n&apos;ont pas été importées'}
               </p>
-              <p className='mb-1'>
-                {importSummary.created} lead(s) créé(s) sur {importSummary.total}{' '}
-                ligne(s) du fichier.
-              </p>
-              <ul className='list-disc list-inside space-y-0.5'>
-                {importErrors.slice(0, 5).map((err, idx) => (
+              {(importSummary.created > 0 || importSummary.updated > 0) && (
+                <p className='mb-1'>
+                  {importSummary.created} créé(s), {importSummary.updated}{' '}
+                  mis à jour sur {importSummary.total} ligne(s).
+                </p>
+              )}
+              <ul className='list-disc list-inside space-y-1'>
+                {importErrors.map((err, idx) => (
                   <li key={`${err.row}-${idx}`}>
-                    Ligne {err.row} : {err.message}
+                    <span className='font-medium'>Ligne Excel {err.row}</span>{' '}
+                    — {err.message}
                   </li>
                 ))}
               </ul>
-              {importErrors.length > 5 && (
-                <p className='mt-1 text-[10px] text-amber-700'>
-                  {importErrors.length - 5} autre(s) erreur(s) non affichée(s).
-                </p>
-              )}
             </div>
           )}
 
@@ -432,22 +322,30 @@ export default function LeadImportSheet({
                 <Table>
                   <TableHeader>
                     <TableRow className='border-b border-gray-100'>
+                      <TableHead className='text-[10px]'>Nom</TableHead>
+                      <TableHead className='text-[10px]'>Prénom</TableHead>
                       <TableHead className='text-[10px]'>Entreprise</TableHead>
-                      <TableHead className='text-[10px]'>Contact</TableHead>
-                      <TableHead className='text-[10px]'>Lieu</TableHead>
+                      <TableHead className='text-[10px]'>Poste</TableHead>
+                      <TableHead className='text-[10px]'>Source</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {rows.slice(0, 20).map((r, i) => (
                       <TableRow key={i} className='border-b border-gray-50'>
                         <TableCell className='py-1.5 text-[11px]'>
+                          {r.lastName ?? '—'}
+                        </TableCell>
+                        <TableCell className='py-1.5 text-[11px]'>
+                          {r.firstName ?? '—'}
+                        </TableCell>
+                        <TableCell className='py-1.5 text-[11px]'>
                           {r.companyName}
                         </TableCell>
                         <TableCell className='py-1.5 text-[11px]'>
-                          {r.phone ?? '—'}
+                          {r.jobTitle ?? '—'}
                         </TableCell>
                         <TableCell className='py-1.5 text-[11px]'>
-                          {r.location ?? '—'}
+                          {r.source ?? '—'}
                         </TableCell>
                       </TableRow>
                     ))}

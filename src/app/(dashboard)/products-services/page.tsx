@@ -1,12 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Package, Wrench, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import NeumoCard from "@/components/NeumoCard";
 import SkeletonLoader from "@/components/SkeletonLoader";
 import ProductCreateSheet from "@/components/ProductCreateSheet";
 import ServiceCreateSheet from "@/components/ServiceCreateSheet";
+import GroupCompanySelect from "@/components/GroupCompanySelect";
 import { withDashboardLayout } from "@/components/layouts/withDashboardLayout";
+import { useAuth } from "@/contexts/AuthContext";
+import { useGroupCompanyScope } from "@/hooks/useGroupCompanyScope";
+import {
+  canManageCatalog,
+  canManageCrossCompanyCatalog,
+} from "@/lib/roles";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -23,6 +30,22 @@ interface Service {
 }
 
 function ProductsServicesPageInner() {
+  const { user: authUser } = useAuth();
+  const {
+    hasGroupScope,
+    companyOptions,
+    selectedCompanyId,
+    setSelectedCompanyId,
+    apiCompanyId,
+    scopeLabel,
+  } = useGroupCompanyScope();
+
+  const showCompanySelector = canManageCrossCompanyCatalog(authUser?.role);
+  const canCreate = canManageCatalog(authUser?.role);
+  const catalogCompanyId = showCompanySelector ? apiCompanyId : undefined;
+  const canCreateForSelection =
+    canCreate && (!showCompanySelector || Boolean(apiCompanyId));
+
   const [tab, setTab] = useState<TabKind>("products");
   const [products, setProducts] = useState<Product[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -32,10 +55,20 @@ function ProductsServicesPageInner() {
   const [serviceSheetOpen, setServiceSheetOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const fetchProducts = async () => {
+  const buildCatalogUrl = useCallback(
+    (path: string) => {
+      if (showCompanySelector && apiCompanyId) {
+        return `${path}?companyId=${encodeURIComponent(apiCompanyId)}`;
+      }
+      return path;
+    },
+    [showCompanySelector, apiCompanyId],
+  );
+
+  const fetchProducts = useCallback(async () => {
     setLoadingProducts(true);
     try {
-      const res = await fetch("/api/products");
+      const res = await fetch(buildCatalogUrl("/api/products"));
       if (res.ok) {
         const data = await res.json();
         setProducts(data);
@@ -45,12 +78,12 @@ function ProductsServicesPageInner() {
     } finally {
       setLoadingProducts(false);
     }
-  };
+  }, [buildCatalogUrl]);
 
-  const fetchServices = async () => {
+  const fetchServices = useCallback(async () => {
     setLoadingServices(true);
     try {
-      const res = await fetch("/api/services");
+      const res = await fetch(buildCatalogUrl("/api/services"));
       if (res.ok) {
         const data = await res.json();
         setServices(data);
@@ -60,15 +93,15 @@ function ProductsServicesPageInner() {
     } finally {
       setLoadingServices(false);
     }
-  };
+  }, [buildCatalogUrl]);
 
   useEffect(() => {
-    fetchProducts();
-  }, []);
+    void fetchProducts();
+  }, [fetchProducts]);
 
   useEffect(() => {
-    fetchServices();
-  }, []);
+    void fetchServices();
+  }, [fetchServices]);
 
   const list = tab === "products" ? products : services;
   const loading = tab === "products" ? loadingProducts : loadingServices;
@@ -82,7 +115,7 @@ function ProductsServicesPageInner() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [tab]);
+  }, [tab, apiCompanyId]);
 
   const handleProductCreated = (product: Product) => {
     setProducts((prev) => [product, ...prev]);
@@ -92,32 +125,69 @@ function ProductsServicesPageInner() {
     setServices((prev) => [service, ...prev]);
   };
 
+  const pageSubtitle = showCompanySelector
+    ? `Catalogue de ${scopeLabel}.`
+    : "Gérez les produits et services de votre entreprise.";
+
   return (
     <>
       <NeumoCard className="rounded-3xl bg-[#f5f5ff] shadow-neu-soft border border-white/50 backdrop-blur-sm mt-4 p-4 flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <h1 className="text-lg font-semibold text-gray-800">
-            Produits et services
-          </h1>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setProductSheetOpen(true)}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-primary text-white text-xs font-medium shadow-neu hover:opacity-90 transition-opacity"
-            >
-              <Plus className="w-4 h-4" />
-              Ajouter un produit
-            </button>
-            <button
-              type="button"
-              onClick={() => setServiceSheetOpen(true)}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-100 text-gray-700 border border-gray-200 text-xs font-medium shadow-neu-soft hover:bg-gray-50 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Ajouter un service
-            </button>
+          <div>
+            <h1 className="text-lg font-semibold text-gray-800">
+              Produits et services
+            </h1>
+            <p className="text-xs text-gray-500 mt-1">{pageSubtitle}</p>
           </div>
+          {canCreate && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setProductSheetOpen(true)}
+                disabled={!canCreateForSelection}
+                title={
+                  !canCreateForSelection
+                    ? "Sélectionnez une entreprise"
+                    : undefined
+                }
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-primary text-white text-xs font-medium shadow-neu hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Plus className="w-4 h-4" />
+                Ajouter un produit
+              </button>
+              <button
+                type="button"
+                onClick={() => setServiceSheetOpen(true)}
+                disabled={!canCreateForSelection}
+                title={
+                  !canCreateForSelection
+                    ? "Sélectionnez une entreprise"
+                    : undefined
+                }
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-100 text-gray-700 border border-gray-200 text-xs font-medium shadow-neu-soft hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Plus className="w-4 h-4" />
+                Ajouter un service
+              </button>
+            </div>
+          )}
         </div>
+
+        {showCompanySelector && (
+          <GroupCompanySelect
+            id="catalog-company"
+            label="Entreprise"
+            value={selectedCompanyId}
+            options={companyOptions}
+            fallbackOption={
+              authUser?.company
+                ? { id: authUser.company.id, name: authUser.company.name }
+                : undefined
+            }
+            onChange={setSelectedCompanyId}
+            selectClassName="h-9 w-full sm:w-auto min-w-[200px] rounded-xl border border-gray-200 bg-white px-3 text-[11px] text-gray-700"
+          />
+        )}
 
         {/* Tabs */}
         <div className="flex gap-1 p-1 rounded-2xl bg-gray-100/80 border border-gray-100">
@@ -160,8 +230,12 @@ function ProductsServicesPageInner() {
               {paginatedList.length === 0 ? (
                 <div className="py-12 text-center text-gray-500 text-sm">
                   {tab === "products"
-                    ? "Aucun produit. Cliquez sur « Ajouter un produit » pour en créer."
-                    : "Aucun service. Cliquez sur « Ajouter un service » pour en créer."}
+                    ? canCreate
+                      ? "Aucun produit. Cliquez sur « Ajouter un produit » pour en créer."
+                      : "Aucun produit enregistré pour cette entreprise."
+                    : canCreate
+                      ? "Aucun service. Cliquez sur « Ajouter un service » pour en créer."
+                      : "Aucun service enregistré pour cette entreprise."}
                 </div>
               ) : (
                 <ul className="space-y-2">
@@ -230,11 +304,13 @@ function ProductsServicesPageInner() {
         open={productSheetOpen}
         onClose={() => setProductSheetOpen(false)}
         onCreated={handleProductCreated}
+        companyId={catalogCompanyId}
       />
       <ServiceCreateSheet
         open={serviceSheetOpen}
         onClose={() => setServiceSheetOpen(false)}
         onCreated={handleServiceCreated}
+        companyId={catalogCompanyId}
       />
     </>
   );

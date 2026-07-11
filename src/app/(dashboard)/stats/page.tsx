@@ -1,12 +1,16 @@
 'use client';
 
+import GroupCompanySelect from '@/components/GroupCompanySelect';
 import NeumoCard from '@/components/NeumoCard';
 import { LeadDemographicsSection } from '@/components/stats/LeadDemographicsSection';
 import { withDashboardLayout } from '@/components/layouts/withDashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
-import { hasGroupCompanyScopeFrontend, isAdminOrManagerLike } from '@/lib/roles';
+import { fetchApi } from '@/lib/fetch-api';
+import { useGroupCompanyScope } from '@/hooks/useGroupCompanyScope';
+import { GROUP_HOLDING_SCOPE_VALUE } from '@/lib/group-scope-roles';
+import { isAdminOrManagerLike } from '@/lib/roles';
 import { Target, TrendingUp, Users } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 interface GoalRow {
   id: string;
@@ -64,13 +68,16 @@ interface UserOption {
   email?: string;
 }
 
-interface CompanyOption {
-  id: string;
-  name: string;
-}
-
 function StatsPageInner() {
   const { user: authUser } = useAuth();
+  const {
+    hasGroupScope,
+    companyOptions,
+    selectedCompanyId,
+    setSelectedCompanyId,
+    scopeLabel,
+    apiCompanyId,
+  } = useGroupCompanyScope({ initialCompanyId: GROUP_HOLDING_SCOPE_VALUE });
   const [goals, setGoals] = useState<GoalRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [renewingId, setRenewingId] = useState<string | null>(null);
@@ -82,26 +89,27 @@ function StatsPageInner() {
   const defaultRange = getDefaultMonthRange();
   const [reportFrom, setReportFrom] = useState(defaultRange.from);
   const [reportTo, setReportTo] = useState(defaultRange.to);
-  const [reportUserId, setReportUserId] = useState('');
+  const [selectedCommercialId, setSelectedCommercialId] = useState('');
   const [reportSource, setReportSource] = useState('');
   const [report, setReport] = useState<SalesSummaryReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
-  const [reportUsers, setReportUsers] = useState<UserOption[]>([]);
-  const [companyOptions, setCompanyOptions] = useState<CompanyOption[]>([]);
-  /** Directrice : '' = pas de companyId en query (API = société rattachée) */
-  const [reportCompanyId, setReportCompanyId] = useState('');
-
-  const hasGroupScope = hasGroupCompanyScopeFrontend(authUser?.role);
+  const [commercialUsers, setCommercialUsers] = useState<UserOption[]>([]);
 
   const fetchGoals = useCallback(async (withLoading: boolean = false) => {
     try {
       if (withLoading) setLoading(true);
-      const url =
-        hasGroupScope && reportCompanyId.trim()
-          ? `/api/goals?companyId=${encodeURIComponent(reportCompanyId)}`
-          : '/api/goals';
-      const res = await fetch(url, { cache: 'no-store' });
+      const params = new URLSearchParams();
+      if (hasGroupScope && apiCompanyId) {
+        params.set('companyId', apiCompanyId);
+      }
+      if (selectedCommercialId.trim()) {
+        params.set('userId', selectedCommercialId.trim());
+      }
+      const qs = params.toString();
+      const url = qs ? `/api/goals?${qs}` : '/api/goals';
+      const res = await fetchApi(url, { cache: 'no-store' });
       if (!res.ok) return;
       const data = await res.json();
       setGoals(data);
@@ -110,7 +118,7 @@ function StatsPageInner() {
     } finally {
       if (withLoading) setLoading(false);
     }
-  }, [hasGroupScope, reportCompanyId]);
+  }, [hasGroupScope, apiCompanyId, selectedCommercialId]);
 
   // Objectifs (tableau + cartes) : même périmètre entreprise que le reste pour la directrice
   useEffect(() => {
@@ -126,18 +134,27 @@ function StatsPageInner() {
       try {
         setLoadingCurrentGoals(true);
         const params = new URLSearchParams();
-        if (hasGroupScope && reportCompanyId) {
-          params.set('companyId', reportCompanyId);
+        if (hasGroupScope && apiCompanyId) {
+          params.set('companyId', apiCompanyId);
+        }
+        if (selectedCommercialId.trim()) {
+          params.set('userId', selectedCommercialId.trim());
         }
         const q = params.toString();
-        const res = await fetch(
+        const res = await fetchApi(
           q ? `/api/goals/current?${q}` : '/api/goals/current',
           { cache: 'no-store' },
         );
         if (!res.ok) return;
         const data = await res.json();
-        if (Array.isArray(data)) {
+        if (selectedCommercialId.trim()) {
+          setCurrentGoalsByUser(
+            data && typeof data === 'object' && data.user ? [data] : [],
+          );
+        } else if (Array.isArray(data)) {
           setCurrentGoalsByUser(data);
+        } else {
+          setCurrentGoalsByUser([]);
         }
       } catch {
         // silencieux
@@ -147,7 +164,7 @@ function StatsPageInner() {
     };
 
     void fetchCurrentGoals();
-  }, [authUser?.role, hasGroupScope, reportCompanyId]);
+  }, [authUser?.role, hasGroupScope, apiCompanyId, selectedCommercialId]);
 
   // Rafraîchir les objectifs quand une conversion a eu lieu (événement global)
   useEffect(() => {
@@ -158,84 +175,60 @@ function StatsPageInner() {
     return () => window.removeEventListener('crm:goals-invalidate', handler);
   }, [fetchGoals]);
 
-  // Liste entreprises du groupe uniquement (directrice) — même règle que la page Leads
-  useEffect(() => {
-    if (!hasGroupScope) return;
-    const load = async () => {
-      try {
-        const res = await fetch('/api/companies', { cache: 'no-store' });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          const groupCompanies = data.filter(
-            (c: { kind?: string }) => c.kind === 'GROUP',
-          );
-          setCompanyOptions(
-            groupCompanies.map((c: { id: string; name: string }) => ({
-              id: c.id,
-              name: c.name,
-            })),
-          );
-        }
-      } catch {
-        // silencieux
-      }
-    };
-    void load();
-  }, [hasGroupScope]);
-
-  // Si l’entreprise choisie n’est plus dans la liste (ex. société cliente), revenir au périmètre par défaut
-  useEffect(() => {
-    if (!hasGroupScope || !reportCompanyId) return;
-    if (companyOptions.length === 0) return;
-    if (!companyOptions.some((c) => c.id === reportCompanyId)) {
-      setReportCompanyId('');
-      setReportUserId('');
-      setReport(null);
-    }
-  }, [hasGroupScope, reportCompanyId, companyOptions]);
-
-  // Charger la liste des utilisateurs pour le filtre "Commercial" (rapports)
+  // Liste des commerciaux pour le filtre page (AGENT uniquement)
   useEffect(() => {
     const isManagerOrAdmin = isAdminOrManagerLike(authUser?.role);
     if (!isManagerOrAdmin) return;
     const fetchUsers = async () => {
       try {
-        const url =
-          hasGroupScope && reportCompanyId
-            ? `/api/users?companyId=${encodeURIComponent(reportCompanyId)}`
-            : '/api/users';
-        const res = await fetch(url, { cache: 'no-store' });
+        const params = new URLSearchParams({ role: 'AGENT' });
+        if (hasGroupScope && apiCompanyId) {
+          params.set('companyId', apiCompanyId);
+        }
+        const res = await fetchApi(`/api/users?${params.toString()}`, {
+          cache: 'no-store',
+        });
         if (!res.ok) return;
         const data = await res.json();
         if (Array.isArray(data)) {
-          setReportUsers(
-            data.map((u: { id: string; name: string; email?: string }) => ({
+          const mapped = data.map(
+            (u: { id: string; name: string; email?: string }) => ({
               id: u.id,
               name: u.name,
               email: u.email,
-            })),
+            }),
           );
+          setCommercialUsers(mapped);
         }
       } catch {
         // silencieux
       }
     };
     void fetchUsers();
-  }, [authUser?.role, hasGroupScope, reportCompanyId]);
+  }, [authUser?.role, hasGroupScope, apiCompanyId]);
+
+  useEffect(() => {
+    if (
+      selectedCommercialId &&
+      commercialUsers.length > 0 &&
+      !commercialUsers.some((u) => u.id === selectedCommercialId)
+    ) {
+      setSelectedCommercialId('');
+    }
+  }, [commercialUsers, selectedCommercialId]);
 
   const isManagerOrAdmin = isAdminOrManagerLike(authUser?.role);
-  const demographicsCompanyId =
-    hasGroupScope && reportCompanyId.trim()
-      ? reportCompanyId.trim()
-      : undefined;
-  const demographicsScopeLabel = hasGroupScope
-    ? reportCompanyId.trim()
-      ? (companyOptions.find((c) => c.id === reportCompanyId)?.name ??
-        'entreprise sélectionnée')
-      : 'périmètre par défaut (ma société)'
-    : undefined;
   const isAgent = authUser?.role === 'agent';
+
+  const commercialScopeLabel = useMemo(() => {
+    const commercial = selectedCommercialId
+      ? commercialUsers.find((u) => u.id === selectedCommercialId)?.name
+      : undefined;
+    if (commercial) {
+      return `${scopeLabel} — ${commercial}`;
+    }
+    return scopeLabel;
+  }, [selectedCommercialId, commercialUsers, scopeLabel]);
   const currentPeriodGoal =
     isAgent && goals.length > 0
       ? (goals.find((g) => {
@@ -249,7 +242,7 @@ function StatsPageInner() {
   const handleRenew = async (goal: GoalRow) => {
     try {
       setRenewingId(goal.id);
-      const res = await fetch(`/api/goals/${goal.id}/renew`, {
+      const res = await fetchApi(`/api/goals/${goal.id}/renew`, {
         method: 'POST',
       });
       const data = await res.json().catch(() => null);
@@ -279,12 +272,14 @@ function StatsPageInner() {
     try {
       setReportLoading(true);
       const params = new URLSearchParams({ from: reportFrom, to: reportTo });
-      if (reportUserId.trim()) params.set('userId', reportUserId);
-      if (reportSource.trim()) params.set('source', reportSource);
-      if (hasGroupScope && reportCompanyId.trim()) {
-        params.set('companyId', reportCompanyId);
+      if (selectedCommercialId.trim()) {
+        params.set('userId', selectedCommercialId);
       }
-      const res = await fetch(
+      if (reportSource.trim()) params.set('source', reportSource);
+      if (hasGroupScope && apiCompanyId) {
+        params.set('companyId', apiCompanyId);
+      }
+      const res = await fetchApi(
         `/api/reports/sales-summary?${params.toString()}`,
       );
       const data = await res.json().catch(() => ({}));
@@ -307,21 +302,38 @@ function StatsPageInner() {
   };
 
   const handleExportReport = async () => {
+    setReportError(null);
+    if (!reportFrom.trim() || !reportTo.trim()) {
+      setReportError('Veuillez renseigner les dates de début et de fin.');
+      return;
+    }
     const params = new URLSearchParams({ from: reportFrom, to: reportTo });
-    if (reportUserId.trim()) params.set('userId', reportUserId);
+    if (selectedCommercialId.trim()) {
+      params.set('userId', selectedCommercialId);
+    }
     if (reportSource.trim()) params.set('source', reportSource);
-    if (hasGroupScope && reportCompanyId.trim()) {
-      params.set('companyId', reportCompanyId);
+    if (hasGroupScope && apiCompanyId) {
+      params.set('companyId', apiCompanyId);
     }
     try {
-      const res = await fetch(
+      setExportLoading(true);
+      const res = await fetchApi(
         `/api/reports/sales-summary/export?${params.toString()}`,
       );
-      if (!res.ok) return;
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setReportError(
+          typeof data?.error === 'string'
+            ? data.error
+            : "Impossible de télécharger l'export.",
+        );
+        return;
+      }
       const blob = await res.blob();
       const disposition = res.headers.get('Content-Disposition');
       const match = disposition?.match(/filename="?([^";]+)"?/);
-      const name = match?.[1] ?? `rapport-ventes-${reportFrom}_${reportTo}.csv`;
+      const name =
+        match?.[1] ?? `tableau-bord-stats-${reportFrom}_${reportTo}.xlsx`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -330,6 +342,8 @@ function StatsPageInner() {
       URL.revokeObjectURL(url);
     } catch {
       setReportError("Impossible de télécharger l'export.");
+    } finally {
+      setExportLoading(false);
     }
   };
 
@@ -345,37 +359,62 @@ function StatsPageInner() {
             objectifs.
           </p>
         </div>
-        {hasGroupScope && (
-          <div className='flex flex-col gap-1 min-w-[200px]'>
-            <label className='text-[11px] text-gray-500'>
-              Entreprise (toute la page)
-            </label>
-            <select
-              value={reportCompanyId}
-              onChange={(e) => {
-                setReportCompanyId(e.target.value);
-                setReportUserId('');
-                setReport(null);
-              }}
-              className='rounded-lg border border-gray-200 px-2 py-1.5 text-xs w-full sm:w-auto min-w-[180px]'
-            >
-              <option value=''>
-                Périmètre par défaut (ma société)
-              </option>
-              {companyOptions.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+        {(hasGroupScope || isManagerOrAdmin) && (
+          <div className='flex flex-col gap-2 sm:flex-row sm:items-end sm:flex-wrap'>
+            {hasGroupScope && (
+              <GroupCompanySelect
+                id='stats-page-company'
+                label='Entreprise (toute la page)'
+                value={selectedCompanyId}
+                options={companyOptions}
+                includeHoldingOption
+                fallbackOption={
+                  authUser?.company
+                    ? { id: authUser.company.id, name: authUser.company.name }
+                    : undefined
+                }
+                onChange={(companyId) => {
+                  setSelectedCompanyId(companyId);
+                  setSelectedCommercialId('');
+                  setReport(null);
+                }}
+              />
+            )}
+            {isManagerOrAdmin && (
+              <div className='flex flex-col gap-1 min-w-[180px]'>
+                <label
+                  className='text-[11px] text-gray-500'
+                  htmlFor='stats-page-commercial'
+                >
+                  Commercial (toute la page)
+                </label>
+                <select
+                  id='stats-page-commercial'
+                  value={selectedCommercialId}
+                  onChange={(e) => {
+                    setSelectedCommercialId(e.target.value);
+                    setReport(null);
+                  }}
+                  className='rounded-lg border border-gray-200 px-2 py-1.5 text-xs w-full sm:w-auto min-w-[180px]'
+                >
+                  <option value=''>Tous les commerciaux</option>
+                  {commercialUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         )}
       </section>
 
       {isManagerOrAdmin && (
         <LeadDemographicsSection
-          companyId={demographicsCompanyId}
-          scopeLabel={demographicsScopeLabel}
+          companyId={apiCompanyId}
+          userId={selectedCommercialId || undefined}
+          scopeLabel={commercialScopeLabel}
         />
       )}
 
@@ -405,21 +444,6 @@ function StatsPageInner() {
                 />
               </div>
               <div className='flex flex-col gap-1'>
-                <label className='text-[11px] text-gray-500'>Commercial</label>
-                <select
-                  value={reportUserId}
-                  onChange={(e) => setReportUserId(e.target.value)}
-                  className='rounded-lg border border-gray-200 px-2 py-1.5 text-xs min-w-[140px]'
-                >
-                  <option value=''>Tous</option>
-                  {reportUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className='flex flex-col gap-1'>
                 <label className='text-[11px] text-gray-500'>
                   Source (optionnel)
                 </label>
@@ -435,20 +459,24 @@ function StatsPageInner() {
                 <button
                   type='button'
                   onClick={handleGenerateReport}
-                  disabled={reportLoading}
+                  disabled={reportLoading || exportLoading}
                   className='px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 disabled:opacity-60'
                 >
                   {reportLoading ? 'Génération…' : 'Générer le rapport'}
                 </button>
-                {report && (
-                  <button
-                    type='button'
-                    onClick={handleExportReport}
-                    className='px-3 py-1.5 rounded-lg border border-primary/30 text-primary text-xs font-medium hover:bg-primary/5'
-                  >
-                    Exporter
-                  </button>
-                )}
+                <button
+                  type='button'
+                  onClick={handleExportReport}
+                  disabled={
+                    exportLoading ||
+                    reportLoading ||
+                    !reportFrom.trim() ||
+                    !reportTo.trim()
+                  }
+                  className='px-3 py-1.5 rounded-lg border border-primary/30 text-primary text-xs font-medium hover:bg-primary/5 disabled:opacity-60'
+                >
+                  {exportLoading ? 'Export…' : 'Exporter'}
+                </button>
               </div>
             </div>
             {reportError && (

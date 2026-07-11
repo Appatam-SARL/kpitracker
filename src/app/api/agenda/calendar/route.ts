@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser, resolveGroupCompanyScope } from "@/lib/auth";
+import {
+  prismaCompanyScopeFilter,
+  userCompanyInScope,
+} from "@/lib/group-scope-roles";
 
 type AgendaItemWhereInput = NonNullable<
   Parameters<typeof prisma.agendaItem.findMany>[0]
@@ -39,7 +43,7 @@ export async function GET(req: Request) {
       url.searchParams.get("companyId"),
     );
     if (scope instanceof NextResponse) return scope;
-    const effectiveCompanyId = scope.companyId;
+    const companyScope = prismaCompanyScopeFilter(scope);
 
     if (!fromParam || !toParam) {
       return NextResponse.json(
@@ -60,16 +64,14 @@ export async function GET(req: Request) {
     // Base: plage de dates + périmètre entreprise (via le lead)
     let where: AgendaItemWhereInput = {
       dueDate: { gte: from, lte: to },
-      lead: {
-        companyId: effectiveCompanyId,
-      },
+      lead: companyScope,
     };
 
     if (authUser.role === "AGENT") {
       where = {
         dueDate: { gte: from, lte: to },
         createdById: authUser.id,
-        lead: { companyId: effectiveCompanyId },
+        lead: companyScope,
       };
     } else if (createdByIdFilter) {
       // Filtre optionnel par créateur (commercial) : on vérifie qu'il appartient à la société ciblée
@@ -77,7 +79,7 @@ export async function GET(req: Request) {
         where: { id: createdByIdFilter },
         select: { companyId: true },
       });
-      if (!target || target.companyId !== effectiveCompanyId) {
+      if (!target || !userCompanyInScope(target.companyId, scope)) {
         return NextResponse.json(
           { error: "Utilisateur cible introuvable ou d'une autre société" },
           { status: 403 },
@@ -86,14 +88,14 @@ export async function GET(req: Request) {
       where = {
         dueDate: { gte: from, lte: to },
         createdById: createdByIdFilter,
-        lead: { companyId: effectiveCompanyId },
+        lead: companyScope,
       };
     } else {
       // Manager / Admin / Directrice : toutes les tâches créées par les utilisateurs de l'entreprise
       where = {
         dueDate: { gte: from, lte: to },
-        createdBy: { companyId: effectiveCompanyId },
-        lead: { companyId: effectiveCompanyId },
+        createdBy: companyScope,
+        lead: companyScope,
       };
     }
 

@@ -8,12 +8,14 @@ interface ProductCreateSheetProps {
   open: boolean;
   onClose: () => void;
   onCreated?: (product: { id: string; name: string }) => void;
+  companyId?: string;
 }
 
 export default function ProductCreateSheet({
   open,
   onClose,
   onCreated,
+  companyId,
 }: ProductCreateSheetProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +38,10 @@ export default function ProductCreateSheet({
       const res = await fetch("/api/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({
+          name,
+          ...(companyId ? { companyId } : {}),
+        }),
       });
 
       if (!res.ok) {

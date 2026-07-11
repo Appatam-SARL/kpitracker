@@ -37,15 +37,12 @@ function AgendaPageInner() {
     if (!hasGroupScope) return;
     const load = async () => {
       try {
-        const res = await fetch("/api/companies", { cache: "no-store" });
+        const res = await fetch("/api/companies/group", { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
         if (Array.isArray(data)) {
-          const groupCompanies = data.filter(
-            (c: { kind?: string }) => c.kind === "GROUP",
-          );
           setCompanyOptions(
-            groupCompanies.map((c: { id: string; name: string }) => ({
+            data.map((c: { id: string; name: string }) => ({
               id: c.id,
               name: c.name,
             })),
@@ -71,16 +68,27 @@ function AgendaPageInner() {
     if (!hasGroupScope) return;
     const loadUsers = async () => {
       try {
-        const url = agendaCompanyId.trim()
-          ? `/api/users?companyId=${encodeURIComponent(agendaCompanyId)}`
-          : "/api/users";
-        const res = await fetch(url, { cache: "no-store" });
-        if (!res.ok) return;
+        const params = new URLSearchParams({ role: "AGENT" });
+        if (agendaCompanyId.trim()) {
+          params.set("companyId", agendaCompanyId.trim());
+        }
+        const res = await fetch(`/api/users?${params.toString()}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          setAgendaUsers([]);
+          return;
+        }
         const data = await res.json();
         if (Array.isArray(data)) {
           setAgendaUsers(
-            data.map((u: { id: string; name: string }) => ({ id: u.id, name: u.name })),
+            data.map((u: { id: string; name: string }) => ({
+              id: u.id,
+              name: u.name,
+            })),
           );
+        } else {
+          setAgendaUsers([]);
         }
       } catch {
         setAgendaUsers([]);
@@ -88,6 +96,16 @@ function AgendaPageInner() {
     };
     void loadUsers();
   }, [hasGroupScope, agendaCompanyId]);
+
+  useEffect(() => {
+    if (
+      agendaUserId &&
+      agendaUsers.length > 0 &&
+      !agendaUsers.some((u) => u.id === agendaUserId)
+    ) {
+      setAgendaUserId("");
+    }
+  }, [agendaUserId, agendaUsers]);
 
   return (
     <div className="flex flex-col gap-4">

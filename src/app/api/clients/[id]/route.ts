@@ -1,3 +1,5 @@
+import { getCurrentUser } from "@/lib/auth";
+import { logUserAction, USER_ACTION_CODES } from "@/lib/user-action-log";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -71,6 +73,17 @@ export async function PATCH(
         },
       },
     });
+    const authUser = await getCurrentUser();
+    if (authUser) {
+      await logUserAction({
+        user: authUser,
+        action: USER_ACTION_CODES.CLIENT_UPDATE,
+        entityType: 'Client',
+        entityId: client.id,
+        summary: `Modification du client ${client.name}`,
+        metadata: { label: client.name },
+      });
+    }
     return NextResponse.json(client);
   } catch (error) {
     if (error instanceof z.ZodError) {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import { logUserAction, USER_ACTION_CODES } from "@/lib/user-action-log";
 import { z } from "zod";
 
 const changePasswordSchema = z.object({
@@ -52,6 +53,13 @@ export async function PATCH(req: Request) {
       sameSite: "lax",
       path: "/",
       maxAge: 60 * 60 * 24 * 7,
+    });
+    await logUserAction({
+      user: authUser,
+      action: USER_ACTION_CODES.AUTH_PASSWORD_CHANGE,
+      entityType: 'User',
+      entityId: authUser.id,
+      summary: 'Modification du mot de passe',
     });
     return res;
   } catch (error) {

@@ -5,7 +5,7 @@ import type { FrontendRole } from '@/contexts/AuthContext';
 import { GROUP_NAV_ROLES } from '@/lib/roles';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
-import { BarChart3, BookOpen, Building2, CalendarDays, LayoutGrid, Package, Settings, UserPlus, Users } from 'lucide-react';
+import { BarChart3, BookOpen, Building2, CalendarDays, LayoutGrid, Package, Settings, Trash2, UserPlus, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -25,6 +25,7 @@ export const sidebarItems: SidebarItemDef[] = [
   { icon: BarChart3, label: 'Statistiques', href: '/stats', allowedRoles: [...GROUP_NAV_ROLES] },
   { icon: Package, label: 'Produits et services', href: '/products-services', allowedRoles: [...GROUP_NAV_ROLES] },
   { icon: Building2, label: 'Clients', href: '/clients' },
+  { icon: Trash2, label: 'Corbeille', href: '/corbeille', allowedRoles: [...GROUP_NAV_ROLES] },
   { icon: BookOpen, label: 'Guide', href: '/guide' },
   { icon: Users, label: 'Utilisateurs', href: '/users', allowedRoles: [...GROUP_NAV_ROLES] },
   { icon: Settings, label: 'Paramètres', href: '/settings', allowedRoles: [...GROUP_NAV_ROLES] },

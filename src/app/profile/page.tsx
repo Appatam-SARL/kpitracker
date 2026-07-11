@@ -4,8 +4,9 @@ import { useEffect, useState, Suspense } from "react";
 import NeumoCard from "@/components/NeumoCard";
 import { withDashboardLayout } from "@/components/layouts/withDashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
-import { isAdminOrManagerLike } from "@/lib/roles";
+import { hasGroupCompanyScopeFrontend, isAdminOrManagerLike } from "@/lib/roles";
 import { EmailSignatureSettings } from "@/components/profile/EmailSignatureSettings";
+import { ProfileActionHistory } from "@/components/profile/ProfileActionHistory";
 import {
   Mail,
   Briefcase,
@@ -44,7 +45,7 @@ function ProfilePageInner({
     role: string;
     mfaEnabled?: boolean;
     mfaSetupPending?: boolean;
-    company?: { name: string };
+    company?: { id: string; name: string };
   } | null>(null);
   const [editingField, setEditingField] = useState<"name" | "email" | null>(
     null
@@ -75,9 +76,24 @@ function ProfilePageInner({
     !viewedUserId || (authUser && viewedUserId === authUser.id);
   const isManagerOrAdmin = isAdminOrManagerLike(authUser?.role);
 
+  const buildGoalsUrl = (targetId: string, targetCompanyId?: string) => {
+    if (authUser?.role === "agent" && !viewedUserId) {
+      return "/api/goals";
+    }
+    const params = new URLSearchParams({ userId: targetId });
+    if (
+      targetCompanyId &&
+      hasGroupCompanyScopeFrontend(authUser?.role) &&
+      targetCompanyId !== authUser?.company?.id
+    ) {
+      params.set("companyId", targetCompanyId);
+    }
+    return `/api/goals?${params.toString()}`;
+  };
+
   // Charge le profil à afficher :
   // - si aucun userId en query → profil de l'utilisateur connecté
-  // - si userId différent → profil de ce membre (via /api/users côté admin/manager)
+  // - si userId différent → profil de ce membre (admin/manager ou rôles groupe)
   useEffect(() => {
     (async () => {
       try {
@@ -101,28 +117,26 @@ function ProfilePageInner({
             role: data.role,
             mfaEnabled: data.mfaEnabled,
             mfaSetupPending: data.mfaSetupPending,
-            company: data.company,
+            company: data.company
+              ? { id: data.company.id, name: data.company.name }
+              : undefined,
           });
           return;
         }
 
-        // Profil d'un autre membre (admin / manager uniquement)
-        const res = await fetch("/api/users");
+        const res = await fetch(`/api/users/${encodeURIComponent(targetId)}`);
         if (!res.ok) {
           setUser(null);
           return;
         }
-        const list = await res.json();
-        const found = (list as any[]).find((u) => u.id === targetId);
-        if (!found) {
-          setUser(null);
-          return;
-        }
+        const found = await res.json();
         setUser({
           name: found.name,
           email: found.email,
           role: (found.role ?? "").toString(),
-          company: found.company ? { name: found.company.name } : undefined,
+          company: found.company
+            ? { id: found.company.id, name: found.company.name }
+            : undefined,
         });
       } catch {
         setUser(null);
@@ -137,11 +151,9 @@ function ProfilePageInner({
       try {
         if (!authUser) return;
         const targetId = viewedUserId ?? authUser.id;
-        const url =
-          authUser.role === "agent" && !viewedUserId
-            ? "/api/goals"
-            : `/api/goals?userId=${encodeURIComponent(targetId)}`;
-        const res = await fetch(url);
+        const res = await fetch(
+          buildGoalsUrl(targetId, user?.company?.id),
+        );
         if (!res.ok) return;
         const data = await res.json();
         setGoals(data);
@@ -149,7 +161,7 @@ function ProfilePageInner({
         // silencieux
       }
     })();
-  }, [authUser, viewedUserId]);
+  }, [authUser, viewedUserId, user?.company?.id]);
 
   const refreshUser = async () => {
     const res = await fetch("/api/auth/me");
@@ -354,11 +366,7 @@ function ProfilePageInner({
     if (!authUser) return;
     try {
       const targetId = viewedUserId ?? authUser.id;
-      const url =
-        authUser.role === "agent" && !viewedUserId
-          ? "/api/goals"
-          : `/api/goals?userId=${encodeURIComponent(targetId)}`;
-      const res = await fetch(url);
+      const res = await fetch(buildGoalsUrl(targetId, user?.company?.id));
       if (!res.ok) return;
       const data = await res.json();
       setGoals(data);
@@ -397,10 +405,12 @@ function ProfilePageInner({
       <section className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
           <h1 className="text-xl md:text-2xl font-semibold text-primary">
-            Mon profil
+            {isSelf ? "Mon profil" : `Profil de ${user?.name ?? "l'utilisateur"}`}
           </h1>
           <p className="text-xs md:text-sm text-gray-500">
-            Vos informations personnelles et préférences de compte.
+            {isSelf
+              ? "Vos informations personnelles et préférences de compte."
+              : "Consultation du profil et des objectifs du membre."}
           </p>
         </div>
       </section>
@@ -888,6 +898,14 @@ function ProfilePageInner({
                 </div>
               )}
             </NeumoCard>
+          )}
+
+          {user && authUser && (
+            <ProfileActionHistory
+              userId={viewedUserId ?? authUser.id}
+              isSelf={!!isSelf}
+              userName={!isSelf ? user.name : undefined}
+            />
           )}
         </div>
       </div>

@@ -58,6 +58,13 @@ export default function LeadAttachmentsList({
   loading = false,
 }: LeadAttachmentsListProps) {
   const handleDelete = async (id: string) => {
+    if (
+      !confirm(
+        'Mettre cette pièce jointe à la corbeille ? Un responsable pourra la restaurer.',
+      )
+    ) {
+      return;
+    }
     try {
       const res = await fetch(`/api/leads/${leadId}/attachments/${id}`, {
         method: "DELETE",
@@ -137,7 +144,7 @@ export default function LeadAttachmentsList({
                     }}
                   >
                     <X className="w-4 h-4 mr-2" />
-                    Supprimer
+                    Mettre à la corbeille
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

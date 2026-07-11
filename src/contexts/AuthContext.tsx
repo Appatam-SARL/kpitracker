@@ -1,5 +1,6 @@
 'use client';
 
+import { fetchApi } from '@/lib/fetch-api';
 import { normalizeFrontendRole } from '@/lib/roles';
 import {
   createContext,
@@ -45,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUser = useCallback(async () => {
     try {
-      const res = await fetch('/api/auth/me', { cache: 'no-store' });
+      const res = await fetchApi('/api/auth/me', { cache: 'no-store' });
       if (!res.ok) {
         setUser(null);
         return;

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { logUserAction, USER_ACTION_CODES } from "@/lib/user-action-log";
 import speakeasy from "speakeasy";
 import { z } from "zod";
 
@@ -34,13 +35,15 @@ export async function POST(req: Request) {
         id: true,
         email: true,
         role: true,
+        companyId: true,
         mfaEnabled: true,
         mfaSecret: true,
         mustChangePassword: true,
+        deletedAt: true,
       },
     });
 
-    if (!user) {
+    if (!user || user.deletedAt) {
       return NextResponse.json(
         { error: "Session MFA expirée. Reconnectez-vous." },
         { status: 401 }
@@ -100,6 +103,12 @@ export async function POST(req: Request) {
       sameSite: "lax",
       path: "/",
       maxAge: 60 * 60 * 24 * 7,
+    });
+
+    await logUserAction({
+      user: { id: user.id, companyId: user.companyId },
+      action: USER_ACTION_CODES.AUTH_LOGIN,
+      summary: 'Connexion au CRM (MFA validé)',
     });
 
     return res;

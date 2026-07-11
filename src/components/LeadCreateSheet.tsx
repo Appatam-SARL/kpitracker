@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import ActivityDomainsChecklist from "./ActivityDomainsChecklist";
 import NeumoCard from "./NeumoCard";
 import { Field } from "./ui/field";
 import {
-  DEFAULT_ACTIVITY_DOMAINS,
+  DEFAULT_ACTIVITY_SECTORS,
   DEFAULT_CIVILITIES,
   DEFAULT_LEAD_SOURCES,
 } from "@/config/lead-options";
@@ -28,6 +29,7 @@ export default function LeadCreateSheet({ open, onClose, onCreated }: LeadCreate
   const [status, setStatus] = useState("NEW");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedActivityDomains, setSelectedActivityDomains] = useState<string[]>([]);
 
   if (!open) return null;
 
@@ -41,7 +43,7 @@ export default function LeadCreateSheet({ open, onClose, onCreated }: LeadCreate
     const email = String(data.get("email") || "");
     const phone = String(data.get("phone") || "");
     const source = String(data.get("source") || "");
-    const activityDomain = String(data.get("activityDomain") || "");
+    const activitySector = String(data.get("activitySector") || "");
     const civility = String(data.get("civility") || "");
     const notes = String(data.get("notes") || "");
     const companyName = String(data.get("companyName") || "");
@@ -61,7 +63,11 @@ export default function LeadCreateSheet({ open, onClose, onCreated }: LeadCreate
           email: email || undefined,
           phone: phone || undefined,
           source: source || undefined,
-          activityDomain: activityDomain || undefined,
+          activitySector: activitySector || undefined,
+          activityDomains:
+            selectedActivityDomains.length > 0
+              ? selectedActivityDomains
+              : undefined,
           civility: civility || undefined,
           companyName: companyName || undefined,
           jobTitle: jobTitle || undefined,
@@ -82,6 +88,7 @@ export default function LeadCreateSheet({ open, onClose, onCreated }: LeadCreate
       onCreated?.(created);
       form.reset();
       setStatus("NEW");
+      setSelectedActivityDomains([]);
       onClose();
     } catch (err: any) {
       setError(err.message ?? "Erreur inattendue");
@@ -153,17 +160,21 @@ export default function LeadCreateSheet({ open, onClose, onCreated }: LeadCreate
                 ))}
               </datalist>
               <Field
-                name="activityDomain"
-                label="Domaine d'activités"
-                placeholder="Ex: BTP, Agroalimentaire..."
-                description="Secteur ou domaine d'activité principal du lead."
-                list="lead-activity-options"
+                name="activitySector"
+                label="Secteur d'activités"
+                placeholder="Ex: Commerce & retail, BTP & construction..."
+                description="Secteur d'activité économique du lead."
+                list="lead-activity-sector-options"
               />
-              <datalist id="lead-activity-options">
-                {DEFAULT_ACTIVITY_DOMAINS.map((domain) => (
-                  <option key={domain} value={domain} />
+              <datalist id="lead-activity-sector-options">
+                {DEFAULT_ACTIVITY_SECTORS.map((sector) => (
+                  <option key={sector} value={sector} />
                 ))}
               </datalist>
+              <ActivityDomainsChecklist
+                selected={selectedActivityDomains}
+                onChange={setSelectedActivityDomains}
+              />
               <Field
                 name="civility"
                 label="Civilité"

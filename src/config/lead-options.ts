@@ -1,5 +1,5 @@
 // Options par défaut réutilisables pour les leads
-// Sources, domaines d'activités, civilités
+// Sources, secteurs (listes) ; domaines = saisie libre par la commerciale
 
 export const DEFAULT_LEAD_SOURCES = [
   "Non renseigné",
@@ -17,19 +17,42 @@ export const DEFAULT_LEAD_SOURCES = [
   "Autre",
 ] as const;
 
-export const DEFAULT_ACTIVITY_DOMAINS = [
-  "BTP / Construction",
-  "Agroalimentaire",
-  "Commerce & distribution",
-  "Industrie",
-  "Services",
-  "Transport & logistique",
+export const DEFAULT_ACTIVITY_SECTORS = [
+  "Activités juridiques et comptables",
+  "Agriculture et élevage",
+  "Architecture, études et normes",
+  "Artisanat d'art, audiovisuel et spectacle",
+  "Automobile",
+  "Bâtiment et travaux publics (BTP)",
+  "Commerce et distribution",
+  "Communication et marketing",
+  "Culture et patrimoine",
+  "Enseignement et formation",
+  "Environnement",
+  "Finance, banque et assurance",
+  "Gestion administrative et ressources humaines",
+  "Hôtellerie et restauration",
   "Immobilier",
-  "Banque / Assurance",
-  "Éducation / Formation",
+  "Industrie - Alimentaire",
+  "Industrie - Bois",
+  "Industrie - Chimie",
+  "Industrie - Métallurgie",
+  "Industrie - Papier et imprimerie",
+  "Industrie - Textile et mode",
+  "Industrie - Électronique",
+  "Industries",
+  "Informatique et télécommunication",
+  "Logistique et transport",
+  "Maintenance, entretien et nettoyage",
+  "Recherche",
   "Santé",
-  "Technologie / IT",
-  "Administration / ONG",
+  "Service public, défense et sécurité",
+  "Service à la personne",
+  "Social",
+  "Sport, animation et loisir",
+  "Tourisme",
+  "Édition",
+  "Énergie",
   "Autre",
 ] as const;
 

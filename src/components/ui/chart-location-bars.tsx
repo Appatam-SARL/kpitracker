@@ -1,6 +1,6 @@
 'use client';
 
-import { MapPin } from 'lucide-react';
+import { MapPin, type LucideIcon } from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -29,15 +29,19 @@ function truncateLabel(label: string, max = 28): string {
   return `${label.slice(0, max - 1)}…`;
 }
 
-type LocationBarCardProps = {
-  title?: string;
+type DemographicBarCardProps = {
+  title: string;
   rows: DonutDatum[];
+  icon?: LucideIcon;
+  emptyMessage?: string;
 };
 
-export function LocationBarCard({
-  title = 'Par situation géographique',
+export function DemographicBarCard({
+  title,
   rows,
-}: LocationBarCardProps) {
+  icon: Icon = MapPin,
+  emptyMessage = 'Aucune donnée renseignée pour ce périmètre.',
+}: DemographicBarCardProps) {
   const chartData = rows
     .filter((r) => r.count > 0)
     .slice(0, MAX_VISIBLE_BARS)
@@ -53,13 +57,13 @@ export function LocationBarCard({
   return (
     <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col min-h-[280px]'>
       <div className='flex items-center gap-2 mb-4'>
-        <MapPin className='h-4 w-4 text-primary shrink-0' aria-hidden />
+        <Icon className='h-4 w-4 text-primary shrink-0' aria-hidden />
         <h3 className='text-sm font-medium text-gray-600'>{title}</h3>
       </div>
 
       {chartData.length === 0 ? (
         <p className='text-xs text-gray-400 flex-1 flex items-center justify-center py-8'>
-          Aucune localisation renseignée pour ce périmètre.
+          {emptyMessage}
         </p>
       ) : (
         <div
@@ -121,5 +125,22 @@ export function LocationBarCard({
         </div>
       )}
     </div>
+  );
+}
+
+/** @deprecated Utiliser DemographicBarCard */
+export function LocationBarCard({
+  title = 'Par situation géographique',
+  rows,
+}: {
+  title?: string;
+  rows: DonutDatum[];
+}) {
+  return (
+    <DemographicBarCard
+      title={title}
+      rows={rows}
+      emptyMessage='Aucune localisation renseignée pour ce périmètre.'
+    />
   );
 }

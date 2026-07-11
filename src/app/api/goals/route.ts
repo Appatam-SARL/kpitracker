@@ -1,8 +1,16 @@
-import { getCurrentUser, requireRole, resolveGroupCompanyScope } from '@/lib/auth';
-import { GROUP_SCOPE_ROLES, hasGroupCompanyScope } from '@/lib/group-scope-roles';
+import { canMutateGoalForTargetCompany, getCurrentUser, requireRole, resolveGroupCompanyScope } from '@/lib/auth';
+import {
+  GROUP_SCOPE_ROLES,
+  hasGroupCompanyScope,
+  prismaCompanyScopeFilter,
+  type ResolvedGroupCompanyScope,
+  userCompanyInScope,
+} from '@/lib/group-scope-roles';
 import { sendGoalAssignmentEmails } from '@/lib/goal-email';
 import { getPeriodBounds, getPeriodLabel } from '@/lib/goalPeriods';
 import { prisma } from '@/lib/prisma';
+import { logUserAction, USER_ACTION_CODES } from '@/lib/user-action-log';
+import { activeOnlyWhere } from '@/lib/trash';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import type { Prisma, GoalPeriodType } from '@prisma/client';
@@ -22,7 +30,7 @@ const createGoalSchema = z.object({
 export async function POST(req: Request) {
   const auth = await requireRole(['ADMIN', 'MANAGER']);
   if (auth instanceof Response) return auth;
-  const { user } = auth as { user: { id: string; companyId: string | null } };
+  const { user } = auth;
   if (!user.companyId) {
     return NextResponse.json(
       { error: 'Utilisateur sans entreprise' },
@@ -33,16 +41,21 @@ export async function POST(req: Request) {
     const json = await req.json();
     const body = createGoalSchema.parse(json);
 
-    const targetUser = await prisma.user.findUnique({
-      where: { id: body.userId },
+    const targetUser = await prisma.user.findFirst({
+      where: { id: body.userId, deletedAt: null },
       select: { id: true, companyId: true },
     });
-    if (!targetUser || targetUser.companyId !== user.companyId) {
+    if (!targetUser?.companyId) {
       return NextResponse.json(
         { error: 'Utilisateur non trouvé ou autre entreprise' },
         { status: 403 },
       );
     }
+    const mutationAllowed = await canMutateGoalForTargetCompany(
+      user,
+      targetUser.companyId,
+    );
+    if (mutationAllowed !== true) return mutationAllowed;
     const { periodStart, periodEnd } = getPeriodBounds(
       body.periodType,
       body.year,
@@ -61,7 +74,7 @@ export async function POST(req: Request) {
       },
       create: {
         userId: body.userId,
-        companyId: user.companyId,
+        companyId: targetUser.companyId,
         periodType: body.periodType,
         periodStart,
         periodEnd,
@@ -125,6 +138,15 @@ export async function POST(req: Request) {
       });
     }
 
+    await logUserAction({
+      user,
+      action: USER_ACTION_CODES.GOAL_CREATE,
+      entityType: 'SalesGoal',
+      entityId: goal.id,
+      summary: `Définition d'un objectif commercial`,
+      metadata: { userId: goal.userId, periodType: goal.periodType },
+    });
+
     return NextResponse.json(goal, { status: 201 });
   } catch (e) {
     if (e instanceof z.ZodError) {
@@ -162,18 +184,36 @@ export async function GET(req: Request) {
   const periodTypeParam = url.searchParams.get('periodType');
   const yearParam = url.searchParams.get('year');
 
-  let scopeCompanyId = currentUser.companyId;
+  let companyScope = prismaCompanyScopeFilter({
+    mode: 'single',
+    companyId: currentUser.companyId,
+  });
+  let resolvedScope: ResolvedGroupCompanyScope | null = null;
   if (hasGroupCompanyScope(currentUser.role)) {
+    const companyIdParam = url.searchParams.get('companyId');
+    const scopeCompanyId =
+      companyIdParam ??
+      (userIdParam
+        ? (
+            await prisma.user.findUnique({
+              where: { id: userIdParam },
+              select: { companyId: true },
+            })
+          )?.companyId ?? null
+        : null);
+
     const scope = await resolveGroupCompanyScope(
       currentUser,
-      url.searchParams.get('companyId'),
+      scopeCompanyId,
     );
     if (scope instanceof NextResponse) return scope;
-    scopeCompanyId = scope.companyId;
+    resolvedScope = scope;
+    companyScope = prismaCompanyScopeFilter(scope);
   }
 
   let where: Prisma.SalesGoalWhereInput = {
-    companyId: scopeCompanyId,
+    ...companyScope,
+    ...activeOnlyWhere,
   };
 
   if (currentUser.role === 'AGENT') {
@@ -183,7 +223,12 @@ export async function GET(req: Request) {
       where: { id: userIdParam },
       select: { companyId: true },
     });
-    if (!target || target.companyId !== scopeCompanyId) {
+    if (
+      !target ||
+      (resolvedScope
+        ? !userCompanyInScope(target.companyId, resolvedScope)
+        : target.companyId !== currentUser.companyId)
+    ) {
       return NextResponse.json(
         { error: 'Utilisateur non trouvé ou autre entreprise' },
         { status: 403 },

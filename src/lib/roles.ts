@@ -44,12 +44,76 @@ export function isAdminOrManagerLike(
   return role === "admin" || isManagerLike(role);
 }
 
+/** Directrice commerciale : catalogue produits/services sur toutes les sociétés du groupe. */
+export function canManageCrossCompanyCatalog(
+  role: FrontendRole | null | undefined,
+): boolean {
+  return role === "directrice_commerciale";
+}
+
+export function canManageCatalog(
+  role: FrontendRole | null | undefined,
+): boolean {
+  return (
+    role === "admin" ||
+    role === "manager" ||
+    canManageCrossCompanyCatalog(role)
+  );
+}
+
+/** Directrice commerciale : objectifs sur toutes les sociétés du groupe. */
+export function canManageCrossCompanyGoals(
+  role: FrontendRole | null | undefined,
+): boolean {
+  return role === "directrice_commerciale";
+}
+
+/** PDG et directrice opération : consultation des commerciales sans gestion d'objectifs. */
+export function isGroupCommercialsViewOnly(
+  role: FrontendRole | null | undefined,
+): boolean {
+  return role === "pdg" || role === "directrice_operation";
+}
+
+export function canManageUserAccounts(
+  role: FrontendRole | null | undefined,
+): boolean {
+  return role === "admin" || role === "manager";
+}
+
+/** Mise en corbeille d'un utilisateur : managers/admins + rôles périmètre groupe. */
+export function canTrashUserAccounts(
+  role: FrontendRole | null | undefined,
+): boolean {
+  return canManageUserAccounts(role) || hasGroupCompanyScopeFrontend(role);
+}
+
+export function canSetAgentGoal(
+  role: FrontendRole | null | undefined,
+): boolean {
+  return canManageUserAccounts(role) || canManageCrossCompanyGoals(role);
+}
+
+/** Corbeille CRM : managers, admins et rôles groupe uniquement. */
+export function canAccessTrash(
+  role: FrontendRole | null | undefined,
+): boolean {
+  return isAdminOrManagerLike(role);
+}
+
+/** Historique d'actions : même périmètre que la consultation de profil (canViewUserProfile côté API). */
+export function canViewUserActionHistory(
+  role: FrontendRole | null | undefined,
+): boolean {
+  return isAdminOrManagerLike(role);
+}
+
 /** Options pour les formulaires de création / édition d’utilisateur. */
 export const USER_ROLE_FORM_OPTIONS: ReadonlyArray<
   readonly [FrontendRole, string]
 > = [
   ["agent", "Commercial"],
-  ["manager", "Manager"],
+  ["manager", "DG"],
   ["directrice_commerciale", "Directrice commerciale"],
   ["pdg", "PDG"],
   ["directrice_operation", "Directrice opération"],
@@ -69,7 +133,7 @@ export function getRoleLabel(role: FrontendRole): string {
     case "admin":
       return "Admin";
     case "manager":
-      return "Manager";
+      return "DG";
     case "directrice_commerciale":
       return "Directrice commerciale";
     case "pdg":

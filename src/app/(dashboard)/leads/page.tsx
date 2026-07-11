@@ -4,6 +4,8 @@ import LeadCard, { type Lead } from '@/components/LeadCard';
 import LeadCreateSheet from '@/components/LeadCreateSheet';
 import LeadEditSheet from '@/components/LeadEditSheet';
 import LeadImportSheet from '@/components/LeadImportSheet';
+import GroupCompanySelect from '@/components/GroupCompanySelect';
+import LeadSearchBar from '@/components/leads/LeadSearchBar';
 import NeumoCard from '@/components/NeumoCard';
 import PipelineColumn from '@/components/PipelineColumn';
 import SkeletonLoader from '@/components/SkeletonLoader';
@@ -23,7 +25,14 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
-import { hasGroupCompanyScopeFrontend, isAdminOrManagerLike } from '@/lib/roles';
+import { useGroupCompanyScope } from '@/hooks/useGroupCompanyScope';
+import { isGroupHoldingScopeValue } from '@/lib/group-scope-roles';
+import {
+  DEFAULT_LEAD_SEARCH_FIELDS,
+  leadMatchesSearchQuery,
+  type LeadSearchFieldId,
+} from '@/lib/lead-search';
+import { isAdminOrManagerLike } from '@/lib/roles';
 import {
   ChevronLeft,
   ChevronRight,
@@ -35,13 +44,10 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
-  Search,
   Trash2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-
-type CompanyOption = { id: string; name: string };
 
 type Filters = {
   status: string[];
@@ -70,9 +76,13 @@ interface LeadRow {
   companyName?: string | null;
   jobTitle?: string | null;
   location?: string | null;
-  activityDomain?: string | null;
+  activityDomains?: string[];
+  activitySector?: string | null;
   civility?: string | null;
+  crmCompanyName?: string;
 }
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 const STATUS_ORDER = ['NEW', 'CONTACTED', 'QUALIFIED', 'LOST', 'CONVERTED'];
 
@@ -132,7 +142,19 @@ function buildSystemViewFilters(id: string): Filters {
 function LeadsPageInner() {
   const router = useRouter();
   const { user: authUser } = useAuth();
+  const {
+    hasGroupScope,
+    companyOptions,
+    selectedCompanyId,
+    setSelectedCompanyId,
+    apiCompanyId,
+  } = useGroupCompanyScope();
+  const isHoldingMode = isGroupHoldingScopeValue(selectedCompanyId);
+
   const [query, setQuery] = useState('');
+  const [searchFields, setSearchFields] = useState<LeadSearchFieldId[]>([
+    ...DEFAULT_LEAD_SEARCH_FIELDS,
+  ]);
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [importSheetOpen, setImportSheetOpen] = useState(false);
@@ -141,7 +163,7 @@ function LeadsPageInner() {
   const [viewMode, setViewMode] = useState<ViewMode>('kanban');
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const LEADS_PER_PAGE = 25;
+  const [leadsPerPage, setLeadsPerPage] = useState<number>(25);
   const [exporting, setExporting] = useState(false);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
@@ -150,51 +172,8 @@ function LeadsPageInner() {
   const [userOptions, setUserOptions] = useState<
     { id: string; name: string; role: string }[]
   >([]);
-  const [companyOptions, setCompanyOptions] = useState<CompanyOption[]>([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
 
   const isManagerOrAdmin = isAdminOrManagerLike(authUser?.role);
-  const hasGroupScope = hasGroupCompanyScopeFrontend(authUser?.role);
-
-  // Entreprise courante par défaut pour la directrice
-  useEffect(() => {
-    if (!hasGroupScope) return;
-    if (!selectedCompanyId && authUser?.company?.id) {
-      setSelectedCompanyId(authUser.company.id);
-    }
-  }, [hasGroupScope, selectedCompanyId, authUser?.company?.id]);
-
-  // Liste des entreprises (pour la directrice)
-  useEffect(() => {
-    if (!hasGroupScope) return;
-    (async () => {
-      try {
-        const res = await fetch('/api/companies', { cache: 'no-store' });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          const groupCompanies = data.filter((c: any) => c?.kind === 'GROUP');
-          setCompanyOptions(
-            groupCompanies.map((c: any) => ({ id: c.id, name: c.name })),
-          );
-          if (
-            groupCompanies.length > 0 &&
-            !groupCompanies.some((c: any) => c.id === selectedCompanyId)
-          ) {
-            const authCompanyId = authUser?.company?.id;
-            setSelectedCompanyId(
-              authCompanyId &&
-                groupCompanies.some((c: any) => c.id === authCompanyId)
-                ? authCompanyId
-                : groupCompanies[0].id,
-            );
-          }
-        }
-      } catch {
-        // silencieux
-      }
-    })();
-  }, [authUser?.company?.id, hasGroupScope, selectedCompanyId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -210,10 +189,10 @@ function LeadsPageInner() {
     }
   }, []);
 
-  // Commerciaux (AGENT) de l'entreprise : pour directrice → entreprise sélectionnée
+  // Commerciaux (AGENT) : entreprise sélectionnée ou holding (toutes filiales)
   useEffect(() => {
     if (!isManagerOrAdmin) return;
-    if (hasGroupScope && !selectedCompanyId) {
+    if (hasGroupScope && !apiCompanyId) {
       setUserOptions([]);
       return;
     }
@@ -221,8 +200,8 @@ function LeadsPageInner() {
     (async () => {
       try {
         const qs = new URLSearchParams({ role: 'AGENT' });
-        if (hasGroupScope && selectedCompanyId) {
-          qs.set('companyId', selectedCompanyId);
+        if (hasGroupScope && apiCompanyId) {
+          qs.set('companyId', apiCompanyId);
         }
         const res = await fetch(`/api/users?${qs.toString()}`, {
           cache: 'no-store',
@@ -249,14 +228,14 @@ function LeadsPageInner() {
         setUserOptions([]);
       }
     })();
-  }, [isManagerOrAdmin, hasGroupScope, selectedCompanyId]);
+  }, [isManagerOrAdmin, hasGroupScope, apiCompanyId]);
 
   const fetchLeads = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (hasGroupScope && selectedCompanyId) {
-        params.set('companyId', selectedCompanyId);
+      if (hasGroupScope && apiCompanyId) {
+        params.set('companyId', apiCompanyId);
       }
       if (filters.status.length) {
         params.set('status', filters.status.join(','));
@@ -291,10 +270,12 @@ function LeadsPageInner() {
         companyName: l.companyName,
         jobTitle: l.jobTitle,
         location: l.location,
-        activityDomain: l.activityDomain,
+        activityDomains: l.activityDomains ?? [],
+        activitySector: l.activitySector ?? null,
         civility: l.civility,
         notes: l.notes ?? undefined,
         status: l.status ?? 'NEW',
+        crmCompanyName: l.crmCompanyName ?? undefined,
       }));
       setLeads(mapped);
     } catch {
@@ -302,35 +283,52 @@ function LeadsPageInner() {
     } finally {
       setLoading(false);
     }
-  }, [filters, hasGroupScope, selectedCompanyId]);
+  }, [filters, hasGroupScope, apiCompanyId]);
 
   useEffect(() => {
     void fetchLeads();
   }, [fetchLeads]);
 
-  const filtered = useMemo(
-    () =>
-      leads.filter((lead) => {
-        const text =
-          `${lead.firstName} ${lead.lastName} ${lead.email ?? ''} ${lead.phone ?? ''} ${lead.jobTitle ?? ''}`.toLowerCase();
-        return !query || text.includes(query.toLowerCase());
-      }),
-    [leads, query],
-  );
+  const filtered = useMemo(() => {
+    const matched = leads.filter((lead) =>
+      leadMatchesSearchQuery(lead, query, searchFields),
+    );
+    return matched.sort((a, b) => {
+      const companyA = (a.companyName ?? '').trim();
+      const companyB = (b.companyName ?? '').trim();
+      if (!companyA && companyB) return 1;
+      if (companyA && !companyB) return -1;
+      const byCompany = companyA.localeCompare(companyB, 'fr', {
+        sensitivity: 'base',
+      });
+      if (byCompany !== 0) return byCompany;
+      return `${a.lastName} ${a.firstName}`.localeCompare(
+        `${b.lastName} ${b.firstName}`,
+        'fr',
+        { sensitivity: 'base' },
+      );
+    });
+  }, [leads, query, searchFields]);
 
   // Pagination : calcul des leads à afficher pour la page courante
   const paginatedLeads = useMemo(() => {
-    const startIndex = (currentPage - 1) * LEADS_PER_PAGE;
-    const endIndex = startIndex + LEADS_PER_PAGE;
+    const startIndex = (currentPage - 1) * leadsPerPage;
+    const endIndex = startIndex + leadsPerPage;
     return filtered.slice(startIndex, endIndex);
-  }, [filtered, currentPage]);
+  }, [filtered, currentPage, leadsPerPage]);
 
-  const totalPages = Math.ceil(filtered.length / LEADS_PER_PAGE);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / leadsPerPage));
 
-  // Réinitialiser à la page 1 si la recherche change
+  // Réinitialiser à la page 1 si la recherche ou la taille de page change
   useEffect(() => {
     setCurrentPage(1);
-  }, [query]);
+  }, [query, searchFields, leadsPerPage]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const grouped = useMemo(() => {
     const map: Record<string, LeadRow[]> = {};
@@ -377,8 +375,8 @@ function LeadsPageInner() {
     try {
       setExporting(true);
       const params = new URLSearchParams();
-      if (hasGroupScope && selectedCompanyId)
-        params.set('companyId', selectedCompanyId);
+      if (hasGroupScope && apiCompanyId)
+        params.set('companyId', apiCompanyId);
       const res = await fetch(
         `/api/leads/export${params.toString() ? `?${params.toString()}` : ''}`,
       );
@@ -507,14 +505,26 @@ function LeadsPageInner() {
             <button
               type='button'
               onClick={() => setSheetOpen(true)}
-              className='inline-flex h-10 w-full items-center justify-center gap-2 rounded-full bg-primary px-3 py-2 text-xs font-medium text-white shadow-neu sm:col-span-2 lg:col-span-1 lg:w-auto'
+              disabled={isHoldingMode}
+              title={
+                isHoldingMode
+                  ? 'Sélectionnez une filiale pour ajouter un lead'
+                  : undefined
+              }
+              className='inline-flex h-10 w-full items-center justify-center gap-2 rounded-full bg-primary px-3 py-2 text-xs font-medium text-white shadow-neu sm:col-span-2 lg:col-span-1 lg:w-auto disabled:opacity-50 disabled:cursor-not-allowed'
             >
               <Plus className='h-3.5 w-3.5 shrink-0' /> Ajouter un lead
             </button>
             <button
               type='button'
-              onClick={() => setImportSheetOpen(true)}
-              className='inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-neu hover:bg-gray-50 lg:w-auto'
+              onClick={() => !isHoldingMode && setImportSheetOpen(true)}
+              disabled={isHoldingMode}
+              title={
+                isHoldingMode
+                  ? 'Sélectionnez une filiale pour importer des leads'
+                  : undefined
+              }
+              className='inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-neu hover:bg-gray-50 lg:w-auto disabled:opacity-50 disabled:cursor-not-allowed'
             >
               <FileSpreadsheet className='h-3.5 w-3.5 shrink-0' />
               <span className='truncate'>Importer Excel</span>
@@ -536,15 +546,12 @@ function LeadsPageInner() {
 
       <NeumoCard className='mt-4 p-4 bg-white flex flex-col gap-4'>
         <div className='flex flex-col gap-4'>
-          <div className='flex w-full min-w-0 items-center gap-2 rounded-full border border-gray-100 bg-gray-50 px-3 py-1.5 text-xs'>
-            <Search className='h-4 w-4 shrink-0 text-gray-400' />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder='Rechercher par nom, email ou téléphone'
-              className='min-w-0 flex-1 bg-transparent text-[11px] text-gray-700 outline-none'
-            />
-          </div>
+          <LeadSearchBar
+            query={query}
+            onQueryChange={setQuery}
+            searchFields={searchFields}
+            onSearchFieldsChange={setSearchFields}
+          />
 
           <div
             className={`grid grid-cols-1 gap-3 md:items-end md:gap-3 ${
@@ -574,30 +581,24 @@ function LeadsPageInner() {
             </label>
 
             {hasGroupScope && (
-              <label className='flex min-w-0 flex-col gap-1'>
-                <span className='text-[11px] text-gray-500'>Entreprise</span>
-                <select
-                  value={selectedCompanyId}
-                  onChange={(e) => {
-                    setSelectedViewId('system-all');
-                    setSelectedCompanyId(e.target.value);
-                    setFilters((prev) => ({ ...prev, assignedTo: '' }));
-                  }}
-                  className='h-9 w-full min-w-0 rounded-full border border-gray-200 bg-white px-3 text-[11px] text-gray-700'
-                >
-                  {companyOptions.length === 0 ? (
-                    <option value={authUser?.company?.id ?? ''}>
-                      {authUser?.company?.name ?? 'Mon entreprise'}
-                    </option>
-                  ) : (
-                    companyOptions.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </label>
+              <GroupCompanySelect
+                id='leads-company'
+                label='Entreprise'
+                value={selectedCompanyId}
+                options={companyOptions}
+                fallbackOption={
+                  authUser?.company
+                    ? { id: authUser.company.id, name: authUser.company.name }
+                    : undefined
+                }
+                includeHoldingOption
+                onChange={(companyId) => {
+                  setSelectedViewId('system-all');
+                  setSelectedCompanyId(companyId);
+                  setFilters((prev) => ({ ...prev, assignedTo: '' }));
+                }}
+                selectClassName='h-9 w-full min-w-0 rounded-full border border-gray-200 bg-white px-3 text-[11px] text-gray-700'
+              />
             )}
 
             <div
@@ -767,6 +768,11 @@ function LeadsPageInner() {
                           <TableHead className='text-[11px] font-medium text-gray-500'>
                             Nom
                           </TableHead>
+                          {isHoldingMode && (
+                            <TableHead className='text-[11px] font-medium text-gray-500'>
+                              Société
+                            </TableHead>
+                          )}
                           <TableHead className='text-[11px] font-medium text-gray-500'>
                             Entreprise
                           </TableHead>
@@ -813,11 +819,18 @@ function LeadsPageInner() {
                                 )}
                               </div>
                             </TableCell>
+                            {isHoldingMode && (
+                              <TableCell className='py-2.5 text-[11px] text-gray-600'>
+                                {lead.crmCompanyName ?? '—'}
+                              </TableCell>
+                            )}
                             <TableCell className='py-2.5 text-[11px] text-gray-600'>
                               {lead.companyName ?? '—'}
                             </TableCell>
                             <TableCell className='py-2.5 text-[11px] text-gray-600'>
-                              {lead.activityDomain ?? '—'}
+                              {lead.activityDomains?.length
+                                ? lead.activityDomains.join(', ')
+                                : '—'}
                             </TableCell>
                             <TableCell className='py-2.5 text-[11px] text-gray-600'>
                               {lead.location ?? '—'}
@@ -872,7 +885,11 @@ function LeadsPageInner() {
                                     className='text-rose-600 focus:text-rose-600'
                                     onSelect={async (e) => {
                                       e.preventDefault();
-                                      if (!confirm('Supprimer ce lead ?'))
+                                      if (
+                                        !confirm(
+                                          'Mettre ce prospect à la corbeille ? Il pourra être restauré par un responsable.',
+                                        )
+                                      )
                                         return;
                                       try {
                                         const res = await fetch(
@@ -894,7 +911,7 @@ function LeadsPageInner() {
                                     }}
                                   >
                                     <Trash2 className='w-4 h-4 mr-2' />
-                                    Supprimer
+                                    Mettre à la corbeille
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -910,8 +927,8 @@ function LeadsPageInner() {
                 {filtered.length > 0 && totalPages > 1 && (
                   <div className='flex items-center justify-between gap-4 pt-2 border-t border-gray-100'>
                     <div className='text-[11px] text-gray-500'>
-                      Affichage de {(currentPage - 1) * LEADS_PER_PAGE + 1} à{' '}
-                      {Math.min(currentPage * LEADS_PER_PAGE, filtered.length)}{' '}
+                      Affichage de {(currentPage - 1) * leadsPerPage + 1} à{' '}
+                      {Math.min(currentPage * leadsPerPage, filtered.length)}{' '}
                       sur {filtered.length} prospects
                     </div>
                     <div className='flex items-center gap-2'>
@@ -975,20 +992,127 @@ function LeadsPageInner() {
             )}
 
             {viewMode === 'grid' && (
-              <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
-                {filtered.map((lead) => (
-                  <LeadCard
-                    key={lead.id}
-                    lead={lead as unknown as Lead}
-                    onClick={() => router.push(`/leads/${lead.id}`)}
-                  />
-                ))}
-                {filtered.length === 0 && (
-                  <p className='text-[12px] text-gray-500 col-span-full py-4'>
-                    Aucun lead pour le moment. Ajoutez votre premier prospect.
-                  </p>
-                )}
-              </div>
+              <>
+                <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:hidden'>
+                  {filtered.map((lead) => (
+                    <LeadCard
+                      key={lead.id}
+                      lead={lead as unknown as Lead}
+                      onClick={() => router.push(`/leads/${lead.id}`)}
+                    />
+                  ))}
+                  {filtered.length === 0 && (
+                    <p className='col-span-full py-4 text-[12px] text-gray-500'>
+                      Aucun lead pour le moment. Ajoutez votre premier prospect.
+                    </p>
+                  )}
+                </div>
+
+                <div className='hidden flex-col gap-4 lg:flex'>
+                  <div className='grid grid-cols-3 gap-4'>
+                    {paginatedLeads.map((lead) => (
+                      <LeadCard
+                        key={lead.id}
+                        lead={lead as unknown as Lead}
+                        onClick={() => router.push(`/leads/${lead.id}`)}
+                      />
+                    ))}
+                  </div>
+                  {filtered.length === 0 && (
+                    <p className='py-4 text-[12px] text-gray-500'>
+                      Aucun lead pour le moment. Ajoutez votre premier prospect.
+                    </p>
+                  )}
+                  {filtered.length > 0 && (
+                    <div className='flex flex-wrap items-center justify-between gap-4 border-t border-gray-100 pt-2'>
+                      <div className='flex flex-wrap items-center gap-3'>
+                        <div className='text-[11px] text-gray-500'>
+                          Affichage de {(currentPage - 1) * leadsPerPage + 1}{' '}
+                          à{' '}
+                          {Math.min(
+                            currentPage * leadsPerPage,
+                            filtered.length,
+                          )}{' '}
+                          sur {filtered.length} prospects
+                        </div>
+                        <label className='flex items-center gap-2 text-[11px] text-gray-500'>
+                          <span>Par page</span>
+                          <select
+                            value={leadsPerPage}
+                            onChange={(e) =>
+                              setLeadsPerPage(Number(e.target.value))
+                            }
+                            className='h-8 rounded-lg border border-gray-200 bg-white px-2 text-[11px] text-gray-700'
+                          >
+                            {PAGE_SIZE_OPTIONS.map((size) => (
+                              <option key={size} value={size}>
+                                {size}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      {totalPages > 1 && (
+                        <div className='flex items-center gap-2'>
+                          <button
+                            type='button'
+                            onClick={() =>
+                              setCurrentPage((p) => Math.max(1, p - 1))
+                            }
+                            disabled={currentPage === 1}
+                            className='rounded-lg border border-gray-100 bg-gray-50 p-1.5 text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40'
+                            title='Page précédente'
+                          >
+                            <ChevronLeft className='h-4 w-4' />
+                          </button>
+                          <div className='flex items-center gap-1'>
+                            {Array.from(
+                              { length: Math.min(totalPages, 7) },
+                              (_, i) => {
+                                let pageNum: number;
+                                if (totalPages <= 7) {
+                                  pageNum = i + 1;
+                                } else if (currentPage <= 4) {
+                                  pageNum = i + 1;
+                                } else if (currentPage >= totalPages - 3) {
+                                  pageNum = totalPages - 6 + i;
+                                } else {
+                                  pageNum = currentPage - 3 + i;
+                                }
+                                return (
+                                  <button
+                                    key={pageNum}
+                                    type='button'
+                                    onClick={() => setCurrentPage(pageNum)}
+                                    className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                                      currentPage === pageNum
+                                        ? 'bg-primary text-white shadow-neu'
+                                        : 'border border-gray-100 bg-gray-50 text-gray-600 hover:bg-gray-100'
+                                    }`}
+                                  >
+                                    {pageNum}
+                                  </button>
+                                );
+                              },
+                            )}
+                          </div>
+                          <button
+                            type='button'
+                            onClick={() =>
+                              setCurrentPage((p) => Math.min(totalPages, p + 1))
+                            }
+                            disabled={currentPage === totalPages}
+                            className='rounded-lg border border-gray-100 bg-gray-50 p-1.5 text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40'
+                            title='Page suivante'
+                          >
+                            <ChevronRight className='h-4 w-4' />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
             )}
 
             {viewMode === 'kanban' && (
@@ -1036,6 +1160,11 @@ function LeadsPageInner() {
       <LeadImportSheet
         open={importSheetOpen}
         onClose={() => setImportSheetOpen(false)}
+        companyId={
+          hasGroupScope && apiCompanyId && !isHoldingMode
+            ? apiCompanyId
+            : undefined
+        }
         onImported={() => fetchLeads()}
       />
 

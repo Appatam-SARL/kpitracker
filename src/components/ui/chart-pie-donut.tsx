@@ -63,7 +63,17 @@ const chartConfig = {
   },
 } satisfies ChartConfig;
 
-export function ChartPieDonut() {
+function dashboardApiUrl(path: string, companyId?: string): string {
+  if (!companyId?.trim()) return path;
+  const params = new URLSearchParams({ companyId: companyId.trim() });
+  return `${path}?${params.toString()}`;
+}
+
+type ChartPieDonutProps = {
+  companyId?: string;
+};
+
+export function ChartPieDonut({ companyId }: ChartPieDonutProps = {}) {
   const [data, setData] = useState(defaultChartData);
   const [total, setTotal] = useState(
     defaultChartData.reduce((acc, d) => acc + d.count, 0),
@@ -72,9 +82,13 @@ export function ChartPieDonut() {
   useEffect(() => {
     const fetchStatusDistribution = async () => {
       try {
-        const res = await fetch('/api/dashboard/lead-status-distribution', {
-          cache: 'no-store',
-        });
+        const res = await fetch(
+          dashboardApiUrl(
+            '/api/dashboard/lead-status-distribution',
+            companyId,
+          ),
+          { cache: 'no-store' },
+        );
         if (!res.ok) return;
         const rows = (await res.json()) as Array<{ status: string; count: number }>;
         const chartData = rows.map((row, index) => ({
@@ -105,7 +119,7 @@ export function ChartPieDonut() {
     return () => {
       window.removeEventListener('crm:goals-invalidate', onInvalidate);
     };
-  }, []);
+  }, [companyId]);
 
   return (
     <Card className='flex flex-col'>
@@ -253,7 +267,7 @@ const defaultSourceData = ACQUISITION_SOURCES.map((source, i) => ({
   fill: CHART_COLORS[i % CHART_COLORS.length],
 }));
 
-export function ChartPieDonutBySource() {
+export function ChartPieDonutBySource({ companyId }: ChartPieDonutProps = {}) {
   const [data, setData] = useState(defaultSourceData);
   const [total, setTotal] = useState(0);
   const [chartConfig] = useState<ChartConfig>(defaultSourceChartConfig);
@@ -261,9 +275,13 @@ export function ChartPieDonutBySource() {
   useEffect(() => {
     const fetchSourceDistribution = async () => {
       try {
-        const res = await fetch('/api/dashboard/lead-source-distribution', {
-          cache: 'no-store',
-        });
+        const res = await fetch(
+          dashboardApiUrl(
+            '/api/dashboard/lead-source-distribution',
+            companyId,
+          ),
+          { cache: 'no-store' },
+        );
         if (!res.ok) return;
         const leads = (await res.json()) as Array<{ source: string | null }>;
 
@@ -304,7 +322,7 @@ export function ChartPieDonutBySource() {
     return () => {
       window.removeEventListener('crm:goals-invalidate', onInvalidate);
     };
-  }, []);
+  }, [companyId]);
 
   return (
     <Card className='flex flex-col'>

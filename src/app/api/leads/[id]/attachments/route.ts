@@ -1,3 +1,6 @@
+import { getCurrentUser } from "@/lib/auth";
+import { logUserAction, USER_ACTION_CODES } from "@/lib/user-action-log";
+import { activeOnlyWhere } from "@/lib/trash";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
@@ -27,8 +30,8 @@ export async function GET(
   try {
     const { id: leadId } = await params;
 
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
+    const lead = await prisma.lead.findFirst({
+      where: { id: leadId, ...activeOnlyWhere },
     });
     if (!lead) {
       return NextResponse.json(
@@ -38,7 +41,7 @@ export async function GET(
     }
 
     const attachments = await prisma.leadAttachment.findMany({
-      where: { leadId },
+      where: { leadId, ...activeOnlyWhere },
       orderBy: { createdAt: "desc" },
     });
 
@@ -59,8 +62,8 @@ export async function POST(
   try {
     const { id: leadId } = await params;
 
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
+    const lead = await prisma.lead.findFirst({
+      where: { id: leadId, ...activeOnlyWhere },
     });
     if (!lead) {
       return NextResponse.json(
@@ -116,6 +119,18 @@ export async function POST(
         storagePath,
       },
     });
+
+    const authUser = await getCurrentUser();
+    if (authUser) {
+      await logUserAction({
+        user: authUser,
+        action: USER_ACTION_CODES.LEAD_ATTACHMENT_CREATE,
+        entityType: 'LeadAttachment',
+        entityId: attachment.id,
+        summary: `Ajout pièce jointe : ${attachment.fileName}`,
+        metadata: { label: attachment.fileName, leadId },
+      });
+    }
 
     return NextResponse.json(attachment, { status: 201 });
   } catch (error) {

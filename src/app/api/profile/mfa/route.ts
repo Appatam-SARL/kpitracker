@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { logUserAction, USER_ACTION_CODES } from "@/lib/user-action-log";
 import { z } from "zod";
 
 const updateMfaSchema = z.object({
@@ -33,6 +34,16 @@ export async function PATCH(req: Request) {
           select: { id: true, name: true },
         },
       },
+    });
+
+    await logUserAction({
+      user: authUser,
+      action: body.enable
+        ? USER_ACTION_CODES.AUTH_MFA_ENABLE
+        : USER_ACTION_CODES.AUTH_MFA_DISABLE,
+      entityType: 'User',
+      entityId: authUser.id,
+      summary: body.enable ? 'Activation du MFA' : 'Désactivation du MFA',
     });
 
     return NextResponse.json(updated);

@@ -1,28 +1,25 @@
 import { getCurrentUser } from "@/lib/auth";
+import { resolveDashboardLeadWhere } from "@/lib/dashboard-company-scope";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    // companyId est obligatoire dans le schéma Prisma.
-    // On filtre donc strictement par société courante.
-    const whereBase = user.companyId
-      ? { companyId: user.companyId }
-      : undefined;
+    const companyIdParam = new URL(req.url).searchParams.get("companyId");
+    const whereBase = await resolveDashboardLeadWhere(user, companyIdParam);
+    if (whereBase instanceof NextResponse) return whereBase;
 
     const [total, converted] = await Promise.all([
-      prisma.lead.count({ where: whereBase ?? {} }),
+      prisma.lead.count({ where: whereBase }),
       prisma.lead.count({
-        where: whereBase
-          ? { ...whereBase, status: "CONVERTED" }
-          : { status: "CONVERTED" },
+        where: { ...whereBase, status: "CONVERTED" },
       }),
     ]);
 

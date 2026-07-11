@@ -16,8 +16,10 @@ export interface Lead {
   companyName?: string | null;
   jobTitle?: string | null;
   location?: string | null;
-  activityDomain?: string | null;
+  activitySector?: string | null;
+  activityDomains?: string[];
   civility?: string | null;
+  crmCompanyName?: string;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -86,6 +88,12 @@ export default function LeadCard({ lead, onClick, draggable, onDragStart }: Lead
           {statusLabel}
         </span>
       </div>
+
+      {lead.crmCompanyName && (
+        <span className="inline-flex w-fit px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-medium border border-indigo-100">
+          {lead.crmCompanyName}
+        </span>
+      )}
 
       <p className="text-[11px] text-gray-500 truncate">{contactLine}</p>
 

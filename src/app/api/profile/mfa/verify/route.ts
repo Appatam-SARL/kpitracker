@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { logUserAction, USER_ACTION_CODES } from "@/lib/user-action-log";
 import { prisma } from "@/lib/prisma";
 import speakeasy from "speakeasy";
 import { z } from "zod";
@@ -66,6 +67,14 @@ export async function POST(req: Request) {
         mfaEnabled: true,
         company: { select: { id: true, name: true } },
       },
+    });
+
+    await logUserAction({
+      user: authUser,
+      action: USER_ACTION_CODES.AUTH_MFA_VERIFY,
+      entityType: 'User',
+      entityId: authUser.id,
+      summary: 'Vérification et activation du MFA',
     });
 
     return NextResponse.json({

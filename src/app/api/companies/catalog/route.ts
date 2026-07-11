@@ -10,6 +10,7 @@ export async function GET() {
     }
 
     const companies = await prisma.company.findMany({
+      where: { kind: 'GROUP' },
       orderBy: { name: 'asc' },
       include: {
         products: {

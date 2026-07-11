@@ -1,5 +1,5 @@
 import {
-  DEFAULT_ACTIVITY_DOMAINS,
+  DEFAULT_ACTIVITY_SECTORS,
   DEFAULT_CIVILITIES,
 } from '@/config/lead-options';
 
@@ -39,10 +39,18 @@ export function normalizeCivility(raw: string | null | undefined): string {
   return normalizeAgainstList(raw, DEFAULT_CIVILITIES);
 }
 
+export function normalizeActivitySector(
+  raw: string | null | undefined,
+): string {
+  return normalizeAgainstList(raw, DEFAULT_ACTIVITY_SECTORS);
+}
+
 export function normalizeActivityDomain(
   raw: string | null | undefined,
 ): string {
-  return normalizeAgainstList(raw, DEFAULT_ACTIVITY_DOMAINS);
+  if (raw == null || typeof raw !== 'string') return LABEL_NONE;
+  const trimmed = raw.replace(/\s+/g, ' ').trim();
+  return trimmed || LABEL_NONE;
 }
 
 export function normalizeCompanyName(raw: string | null | undefined): string {
@@ -52,6 +60,12 @@ export function normalizeCompanyName(raw: string | null | undefined): string {
 }
 
 export function normalizeLocation(raw: string | null | undefined): string {
+  if (raw == null || typeof raw !== 'string') return LABEL_NONE;
+  const trimmed = raw.replace(/\s+/g, ' ').trim();
+  return trimmed || LABEL_NONE;
+}
+
+export function normalizeJobTitle(raw: string | null | undefined): string {
   if (raw == null || typeof raw !== 'string') return LABEL_NONE;
   const trimmed = raw.replace(/\s+/g, ' ').trim();
   return trimmed || LABEL_NONE;

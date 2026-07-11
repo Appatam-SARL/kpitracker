@@ -1,4 +1,5 @@
 import { requireRole } from '@/lib/auth';
+import { logUserAction, USER_ACTION_CODES } from '@/lib/user-action-log';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -103,6 +104,15 @@ export async function POST(req: Request) {
       });
 
       return sale;
+    });
+
+    await logUserAction({
+      user,
+      action: USER_ACTION_CODES.SALE_CREATE,
+      entityType: 'Sale',
+      entityId: result.id,
+      summary: `Enregistrement d'une vente (${result.amount.toLocaleString('fr-FR')} XOF)`,
+      metadata: { clientId: result.clientId, amount: result.amount },
     });
 
     return NextResponse.json(result, { status: 201 });

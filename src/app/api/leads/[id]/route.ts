@@ -3,6 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { hasGroupCompanyScope } from "@/lib/group-scope-roles";
 import { agentCanAccessUnassignedLegacyLead } from "@/lib/agentLegacyLeadAccess";
+import {
+  leadActivityDomainsInclude,
+  serializeLeadWithActivityDomains,
+} from "@/lib/lead-activity-domains";
 
 /** GET /api/leads/[id] - Récupère un lead avec sa société */
 export async function GET(
@@ -51,6 +55,7 @@ export async function GET(
             service: { select: { id: true, name: true } },
           },
         },
+        ...leadActivityDomainsInclude,
       },
     });
 
@@ -98,7 +103,7 @@ export async function GET(
     ]);
 
     return NextResponse.json({
-      ...lead,
+      ...serializeLeadWithActivityDomains(lead),
       activities,
       totalActivities,
       hasMoreActivities: totalActivities > activities.length,

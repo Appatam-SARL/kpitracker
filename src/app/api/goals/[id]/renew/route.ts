@@ -1,6 +1,7 @@
-import { requireRole } from "@/lib/auth";
+import { canMutateGoalForTargetCompany, requireRole } from "@/lib/auth";
 import { getNextPeriod, getPeriodBounds, GoalPeriodType } from "@/lib/goalPeriods";
 import { prisma } from "@/lib/prisma";
+import { logUserAction, USER_ACTION_CODES } from "@/lib/user-action-log";
 import { NextResponse } from "next/server";
 
 /** POST : reconduire un objectif sur la période suivante — ADMIN ou MANAGER uniquement. */
@@ -10,7 +11,7 @@ export async function POST(
 ) {
   const auth = await requireRole(["ADMIN", "MANAGER"]);
   if (auth instanceof Response) return auth;
-  const { user } = auth as { user: { id: string; companyId: string | null } };
+  const { user } = auth;
 
   if (!user.companyId) {
     return NextResponse.json(
@@ -43,9 +44,11 @@ export async function POST(
       );
     }
 
-    if (existing.companyId !== user.companyId) {
-      return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
-    }
+    const mutationAllowed = await canMutateGoalForTargetCompany(
+      user,
+      existing.companyId,
+    );
+    if (mutationAllowed !== true) return mutationAllowed;
 
     // Recalculer le réalisé pour cet objectif (même logique que GET /api/goals)
     const realizedConversions = await prisma.client.count({
@@ -129,6 +132,15 @@ export async function POST(
         targetRevenue: existing.targetRevenue,
         setById: user.id,
       },
+    });
+
+    await logUserAction({
+      user,
+      action: USER_ACTION_CODES.GOAL_RENEW,
+      entityType: 'SalesGoal',
+      entityId: renewed.id,
+      summary: 'Reconduction d\'un objectif commercial',
+      metadata: { previousGoalId: existing.id },
     });
 
     return NextResponse.json(renewed, { status: 201 });

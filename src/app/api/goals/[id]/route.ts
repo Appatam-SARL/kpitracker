@@ -1,4 +1,6 @@
-import { requireRole } from '@/lib/auth';
+import { canMutateGoalForTargetCompany, requireRole } from '@/lib/auth';
+import { logUserAction, USER_ACTION_CODES } from '@/lib/user-action-log';
+import { softDeleteGoal } from '@/lib/trash';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -26,17 +28,19 @@ export async function PATCH(
     const { id } = await params;
     const existing = await prisma.salesGoal.findUnique({
       where: { id },
-      select: { companyId: true },
+      select: { companyId: true, deletedAt: true },
     });
-    if (!existing) {
+    if (!existing || existing.deletedAt) {
       return NextResponse.json(
         { error: 'Objectif introuvable' },
         { status: 404 },
       );
     }
-    if (existing.companyId !== user.companyId) {
-      return NextResponse.json({ error: 'Accès refusé' }, { status: 403 });
-    }
+    const mutationAllowed = await canMutateGoalForTargetCompany(
+      user,
+      existing.companyId,
+    );
+    if (mutationAllowed !== true) return mutationAllowed;
 
     const json = await req.json();
     const body = updateGoalSchema.parse(json);
@@ -56,6 +60,13 @@ export async function PATCH(
         user: { select: { id: true, name: true, email: true } },
         setBy: { select: { id: true, name: true } },
       },
+    });
+    await logUserAction({
+      user,
+      action: USER_ACTION_CODES.GOAL_UPDATE,
+      entityType: 'SalesGoal',
+      entityId: goal.id,
+      summary: 'Modification d\'un objectif commercial',
     });
     return NextResponse.json(goal);
   } catch (e) {
@@ -91,19 +102,28 @@ export async function DELETE(
     const { id } = await params;
     const existing = await prisma.salesGoal.findUnique({
       where: { id },
-      select: { companyId: true },
+      select: { companyId: true, deletedAt: true },
     });
-    if (!existing) {
+    if (!existing || existing.deletedAt) {
       return NextResponse.json(
         { error: 'Objectif introuvable' },
         { status: 404 },
       );
     }
-    if (existing.companyId !== user.companyId) {
-      return NextResponse.json({ error: 'Accès refusé' }, { status: 403 });
-    }
+    const mutationAllowed = await canMutateGoalForTargetCompany(
+      user,
+      existing.companyId,
+    );
+    if (mutationAllowed !== true) return mutationAllowed;
 
-    await prisma.salesGoal.delete({ where: { id } });
+    await softDeleteGoal(user.id, id);
+    await logUserAction({
+      user,
+      action: USER_ACTION_CODES.GOAL_DELETE,
+      entityType: 'SalesGoal',
+      entityId: id,
+      summary: 'Mise en corbeille d\'un objectif commercial',
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('DELETE /api/goals/[id] error', error);

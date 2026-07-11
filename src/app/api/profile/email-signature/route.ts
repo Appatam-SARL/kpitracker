@@ -1,4 +1,5 @@
 import { getCurrentUser } from '@/lib/auth';
+import { logUserAction, USER_ACTION_CODES } from '@/lib/user-action-log';
 import {
   EMAIL_SIGNATURE_IMAGE,
   EMAIL_SIGNATURE_DESIGNER_BRIEF,
@@ -127,6 +128,14 @@ export async function POST(req: Request) {
       data: { emailSignature: publicPath },
     });
 
+    await logUserAction({
+      user,
+      action: USER_ACTION_CODES.PROFILE_SIGNATURE_UPDATE,
+      entityType: 'User',
+      entityId: user.id,
+      summary: 'Mise à jour de la signature email',
+    });
+
     return NextResponse.json({
       imageUrl: publicPath,
       signatureHtml: buildSignatureHtmlFromStored(publicPath, {
@@ -153,6 +162,13 @@ export async function DELETE() {
     await prisma.user.update({
       where: { id: user.id },
       data: { emailSignature: null },
+    });
+    await logUserAction({
+      user,
+      action: USER_ACTION_CODES.PROFILE_SIGNATURE_UPDATE,
+      entityType: 'User',
+      entityId: user.id,
+      summary: 'Suppression de la signature email',
     });
     return NextResponse.json({ imageUrl: null, signatureHtml: '' });
   } catch (error) {

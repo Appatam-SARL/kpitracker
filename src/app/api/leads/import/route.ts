@@ -1,27 +1,31 @@
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
+import { logUserAction, USER_ACTION_CODES } from '@/lib/user-action-log';
+import { agentCanModifyLead } from '@/lib/agentLegacyLeadAccess';
+import { hasGroupCompanyScope, isGroupHoldingScopeValue } from '@/lib/group-scope-roles';
+import { findLeadForImportRow } from '@/lib/lead-import-match';
+import {
+  buildLeadDataFromImportRow,
+  resolveImportNames,
+} from '@/lib/lead-import-upsert';
+import {
+  excelRowNumber,
+  validateAndNormalizeLeadImportLists,
+} from '@/lib/lead-import-validation';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-/** Corps attendu : tableau de lignes issues de l’Excel (mapping côté client).
- *  companyName        -> nom de la société
- *  phone              -> téléphone
- *  firstName          -> colonne "nom" (ex. Nguessan, Zile) → Lead.firstName
- *  lastName           -> colonne "prenoms" (ex. Jean Modeste, Kouassi) → Lead.lastName
- *  receivedBy         -> personne de contact (fallback pour firstName/lastName)
- *  domain             -> domaine d'activités
- *  location           -> localisation / adresse
- *  observation        -> notes libres → Lead.notes
- *  civility           -> civilité (M., Mme...) → Lead.civility
- */
 const importRowSchema = z.object({
   companyName: z.string().min(1),
   phone: z.string().optional(),
   email: z.string().optional(),
   firstName: z.string().optional(),
   lastName: z.string().optional(),
-  receivedBy: z.string().optional(),
+  activitySector: z.string().optional(),
+  activityDomain: z.string().optional(),
+  /** Alias rétrocompatibilité anciens imports */
   domain: z.string().optional(),
+  source: z.string().optional(),
   jobTitle: z.string().optional(),
   location: z.string().optional(),
   observation: z.string().optional(),
@@ -30,23 +34,8 @@ const importRowSchema = z.object({
 
 const importBodySchema = z.object({
   leads: z.array(importRowSchema).min(1).max(2000),
+  companyId: z.string().optional(),
 });
-
-/** Dérive firstName / lastName à partir de la colonne \"reçu par\"
- *  ou, à défaut, du nom de l’entreprise.
- */
-function toFirstLast(
-  receivedBy: string | undefined,
-  companyName: string,
-): { firstName: string; lastName: string } {
-  const fallback = (companyName || 'Entreprise').trim();
-  if (!receivedBy || !receivedBy.trim()) {
-    return { firstName: 'Contact', lastName: fallback };
-  }
-  const parts = receivedBy.trim().split(/\s+/);
-  if (parts.length === 1) return { firstName: parts[0], lastName: fallback };
-  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
-}
 
 export async function POST(req: Request) {
   try {
@@ -62,69 +51,155 @@ export async function POST(req: Request) {
     }
 
     const json = await req.json();
-    // 1) Validation du corps JSON (provenant du parsing Excel côté client)
-    const { leads: rows } = importBodySchema.parse(json);
+    const { leads: rows, companyId: companyIdParam } =
+      importBodySchema.parse(json);
+
+    if (isGroupHoldingScopeValue(companyIdParam)) {
+      return NextResponse.json(
+        {
+          error:
+            "L'import nécessite une entreprise précise. Sélectionnez une filiale (pas Holding).",
+        },
+        { status: 400 },
+      );
+    }
+
+    let effectiveCompanyId = user.companyId;
+    if (hasGroupCompanyScope(user.role) && companyIdParam) {
+      const exists = await prisma.company.findUnique({
+        where: { id: companyIdParam },
+        select: { id: true },
+      });
+      if (!exists) {
+        return NextResponse.json(
+          { error: 'Entreprise introuvable' },
+          { status: 400 },
+        );
+      }
+      effectiveCompanyId = companyIdParam;
+    }
 
     const created: { id: string; firstName: string; lastName: string }[] = [];
+    const updated: { id: string; firstName: string; lastName: string }[] = [];
     const errors: { row: number; message: string }[] = [];
 
-    // 3) On traite chaque ligne de l’Excel une par une
     for (let i = 0; i < rows.length; i++) {
       try {
         const row = rows[i];
-        // 3.a) Normalisation du nom de société (info métier du lead)
-        const companyName = (row.companyName || '').trim() || 'Sans nom';
-
-        // 3.c) On déduit firstName / lastName :
-        //  - en priorité à partir des colonnes "Nom" / "Prénoms" de l'Excel
-        //  - sinon en fallback à partir de la colonne "reçu par"
-        let firstName = row.firstName?.trim() || '';
-        let lastName = row.lastName?.trim() || '';
-        if (!firstName && !lastName) {
-          const fromReceived = toFirstLast(row.receivedBy, companyName);
-          firstName = fromReceived.firstName;
-          lastName = fromReceived.lastName;
-        } else {
-          if (!firstName) firstName = 'Contact';
-          if (!lastName) lastName = companyName;
+        const listValidation = validateAndNormalizeLeadImportLists(row);
+        if (listValidation.errors.length > 0) {
+          for (const message of listValidation.errors) {
+            errors.push({ row: excelRowNumber(i), message });
+          }
+          continue;
         }
-        // 3.d) Construction d’un champ \"source\" lisible en combinant
-        //      domaine, localisation et observation (pour l’ancien affichage).
-        const sourceParts: string[] = [];
-        if (row.domain) sourceParts.push(String(row.domain).trim());
-        if (row.location)
-          sourceParts.push(`Lieu: ${String(row.location).trim()}`);
-        if (row.observation)
-          sourceParts.push(`Obs: ${String(row.observation).trim()}`);
-        const source = sourceParts.length ? sourceParts.join(' | ') : undefined;
 
-        // 3.e) Création du lead en base : on alimente tous les nouveaux champs
+        const companyName = (row.companyName || '').trim() || 'Sans nom';
+        const { firstName, lastName } = resolveImportNames(row, companyName);
+        const leadData = buildLeadDataFromImportRow(
+          row,
+          companyName,
+          firstName,
+          lastName,
+          listValidation,
+        );
+
+        const match = await findLeadForImportRow({
+          companyId: effectiveCompanyId,
+          companyName,
+          email: row.email,
+          phone: row.phone,
+        });
+
+        if (match.kind === 'ambiguous') {
+          errors.push({
+            row: excelRowNumber(i),
+            message:
+              'Plusieurs prospects correspondent à cette entreprise et ce contact.',
+          });
+          continue;
+        }
+
+        if (match.kind === 'single') {
+          if (user.role === 'AGENT') {
+            const canModify = await agentCanModifyLead(
+              match.leadId,
+              effectiveCompanyId,
+              user.id,
+            );
+            if (!canModify) {
+              errors.push({
+                row: excelRowNumber(i),
+                message:
+                  'Accès refusé : ce prospect est géré par un autre commercial.',
+              });
+              continue;
+            }
+          }
+
+          const lead = await prisma.lead.update({
+            where: { id: match.leadId },
+            data: {
+              firstName: leadData.firstName,
+              lastName: leadData.lastName,
+              phone: leadData.phone,
+              email: leadData.email,
+              source: leadData.source,
+              activitySector: leadData.activitySector,
+              activityDomains: {
+                deleteMany: {},
+                create: leadData.activityDomains.map((domain) => ({ domain })),
+              },
+              companyName: leadData.companyName,
+              jobTitle: leadData.jobTitle,
+              location: leadData.location,
+              notes: leadData.notes,
+              civility: leadData.civility,
+            },
+          });
+
+          await prisma.activity.create({
+            data: {
+              type: 'NOTE',
+              relatedTo: lead.id,
+              leadId: lead.id,
+              userId: user.id,
+              content: `Lead mis à jour via Excel par ${user.name} (${user.email}).`,
+            },
+          });
+
+          updated.push({
+            id: lead.id,
+            firstName: lead.firstName,
+            lastName: lead.lastName,
+          });
+          continue;
+        }
+
         const lead = await prisma.lead.create({
           data: {
-            firstName,
-            lastName,
-            phone: row.phone?.trim() || null,
-            // email directement issu de la colonne \"email\" si présente
-            email: row.email?.trim() || null,
-            // champ historique pour le front (texte combiné)
-            source: source || null,
-            // nouveau champ structuré pour le domaine d'activités
-            activityDomain: row.domain?.trim() || null,
-            // nom de la compagnie \"à plat\" sur le lead
-            companyName,
-            // poste / fonction du prospect dans son entreprise
-            jobTitle: row.jobTitle?.trim() || null,
-            // localisation utile pour la carte
-            location: row.location?.trim() || null,
-            // observation envoyée dans les notes du lead
-            notes: row.observation?.trim() || null,
-            // civilité (M., Mme, etc.) si présente dans l'Excel
-            civility: row.civility?.trim() || null,
+            firstName: leadData.firstName,
+            lastName: leadData.lastName,
+            phone: leadData.phone,
+            email: leadData.email,
+            source: leadData.source,
+            activitySector: leadData.activitySector,
+            activityDomains:
+              leadData.activityDomains.length > 0
+                ? {
+                    create: leadData.activityDomains.map((domain) => ({
+                      domain,
+                    })),
+                  }
+                : undefined,
+            companyName: leadData.companyName,
+            jobTitle: leadData.jobTitle,
+            location: leadData.location,
+            notes: leadData.notes,
+            civility: leadData.civility,
             status: 'NEW',
-            // Traçabilité: le commercial/utilisateur qui importe devient l'assigné.
             assignedTo: user.id,
-            // L'import est toujours rattaché à la société de l'utilisateur connecté.
-            companyId: user.companyId,
+            companyId: effectiveCompanyId,
           },
         });
 
@@ -137,6 +212,7 @@ export async function POST(req: Request) {
             content: `Lead importé via Excel par ${user.name} (${user.email}).`,
           },
         });
+
         created.push({
           id: lead.id,
           firstName: lead.firstName,
@@ -144,27 +220,47 @@ export async function POST(req: Request) {
         });
       } catch (err) {
         errors.push({
-          row: i + 1,
+          row: excelRowNumber(i),
           message: err instanceof Error ? err.message : 'Erreur inconnue',
         });
       }
     }
 
+    await logUserAction({
+      user,
+      action: USER_ACTION_CODES.LEAD_IMPORT,
+      summary: `Import Excel : ${created.length} créé(s), ${updated.length} mis à jour`,
+      metadata: {
+        created: created.length,
+        updated: updated.length,
+        total: rows.length,
+      },
+    });
+
     return NextResponse.json({
       created: created.length,
+      updated: updated.length,
       total: rows.length,
       errors,
     });
   } catch (error) {
     console.error('POST /api/leads/import error', error);
+    if (error instanceof z.ZodError) {
+      const details = error.issues
+        .map((issue) => {
+          const path = issue.path.length > 0 ? issue.path.join('.') : 'données';
+          return `${path} : ${issue.message}`;
+        })
+        .join(' ; ');
+      return NextResponse.json(
+        { error: `Données invalides — ${details}` },
+        { status: 400 },
+      );
+    }
+
     return NextResponse.json(
-      {
-        error:
-          error instanceof z.ZodError
-            ? 'Données invalides'
-            : 'Impossible d’importer les leads',
-      },
-      { status: error instanceof z.ZodError ? 400 : 500 },
+      { error: 'Impossible d’importer les leads' },
+      { status: 500 },
     );
   }
 }

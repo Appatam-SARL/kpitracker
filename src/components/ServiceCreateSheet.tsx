@@ -8,12 +8,14 @@ interface ServiceCreateSheetProps {
   open: boolean;
   onClose: () => void;
   onCreated?: (service: { id: string; name: string }) => void;
+  companyId?: string;
 }
 
 export default function ServiceCreateSheet({
   open,
   onClose,
   onCreated,
+  companyId,
 }: ServiceCreateSheetProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +38,10 @@ export default function ServiceCreateSheet({
       const res = await fetch("/api/services", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({
+          name,
+          ...(companyId ? { companyId } : {}),
+        }),
       });
 
       if (!res.ok) {

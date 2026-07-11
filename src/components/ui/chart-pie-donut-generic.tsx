@@ -47,18 +47,30 @@ type MarketShareCardProps = {
   title: string;
   rows: DonutDatum[];
   maxLegendItems?: number;
+  /** Valeur au centre du donut : somme des effectifs (défaut) ou nombre de catégories. */
+  centerMetric?: 'sum' | 'categoryCount';
 };
 
 /** Carte type « Market Share » : légende à gauche, donut + total au centre à droite. */
 export function MarketShareCard({
   title,
   rows,
-  maxLegendItems = 8,
+  maxLegendItems,
+  centerMetric = 'sum',
 }: MarketShareCardProps) {
   const chartData = toChartRows(rows);
   const total = chartData.reduce((acc, d) => acc + d.count, 0);
+  const centerValue =
+    centerMetric === 'categoryCount' ? chartData.length : total;
   const chartConfig = buildChartConfig(chartData.map((d) => d.label));
-  const legendRows = chartData.slice(0, maxLegendItems);
+  const legendRows =
+    maxLegendItems !== undefined
+      ? chartData.slice(0, maxLegendItems)
+      : chartData;
+  const hiddenLegendCount =
+    maxLegendItems !== undefined
+      ? Math.max(0, chartData.length - maxLegendItems)
+      : 0;
 
   return (
     <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5 h-full flex flex-col min-h-[220px]'>
@@ -91,10 +103,10 @@ export function MarketShareCard({
                   </span>
                 </li>
               ))}
-            {chartData.length > maxLegendItems && (
+            {hiddenLegendCount > 0 && (
               <li className='text-[10px] text-gray-400 pl-4'>
-                +{chartData.length - maxLegendItems} autre
-                {chartData.length - maxLegendItems > 1 ? 's' : ''}
+                +{hiddenLegendCount} autre
+                {hiddenLegendCount > 1 ? 's' : ''}
               </li>
             )}
           </ul>
@@ -121,7 +133,7 @@ export function MarketShareCard({
             </ChartContainer>
             <div className='absolute inset-0 flex flex-col items-center justify-center pointer-events-none'>
               <span className='text-xl font-bold text-gray-900 leading-none tabular-nums'>
-                {total.toLocaleString('fr-FR')}
+                {centerValue.toLocaleString('fr-FR')}
               </span>
             </div>
           </div>

@@ -40,12 +40,14 @@ alwaysApply: true
 - **/api/users** : `GET` / `POST` / `PATCH` / `DELETE` via `requireRole(['ADMIN', 'MANAGER'])` ; filtre `?companyId=` réservé aux rôles groupe.
 - **/api/leads**, **objectifs**, **dashboard** : périmètre entreprise via `resolveGroupCompanyScope` pour les rôles groupe.
 - **Modules commerciaux** : `AGENT` = ses données ; `MANAGER` = son entreprise ; rôles groupe = entreprise(s) sélectionnée(s) ; `ADMIN` = global selon le module.
+- **Historique des actions** (`/api/users/[id]/action-history`, section profil) : chaque utilisateur voit **son** historique ; `MANAGER`/`ADMIN` voient celui des membres de **leur société** ; rôles groupe voient celui des commerciales des **filiales GROUP** (via `canViewUserProfile`). Pagination fixe : **10 actions par page**. Journalisation via `logUserAction()` sur les mutations API + auth (pas les GET).
+- **Corbeille** (`/corbeille`, `/api/trash`) : accès **managers / admins / rôles groupe** uniquement (`canAccessTrash`, `requireRole(['ADMIN', 'MANAGER'])`, middleware `/corbeille`). Les **AGENT** peuvent mettre à la corbeille leurs prospects et pièces jointes via les DELETE existants, mais **ne voient pas** la page corbeille. Soft delete (`deletedAt`) sur Lead, User, SalesGoal, LeadAttachment ; restauration et purge définitive manuelle. Filtre `?companyId=` pour les rôles groupe.
 
 ## Bonnes pratiques frontend
 
 - Ne jamais se fier uniquement au front : le backend filtre toujours.
 - `AuthProvider` + `normalizeFrontendRole()` pour mapper les rôles API → `FrontendRole`.
-- Navigation restreinte : `GROUP_NAV_ROLES` dans la sidebar ; middleware sur `/users`, `/settings`, `/products-services`.
+- Navigation restreinte : `GROUP_NAV_ROLES` dans la sidebar ; middleware sur `/users`, `/settings`, `/products-services`, `/corbeille`.
 
 ## Alignement des rôles entre back et front
 

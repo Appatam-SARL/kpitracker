@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { logUserAction, USER_ACTION_CODES } from "@/lib/user-action-log";
 import { z } from "zod";
 
 const agendaStatusValues = ["TODO", "IN_PROGRESS", "DONE"] as const;
@@ -36,6 +37,15 @@ export async function PATCH(
       where: { id },
       data: { status: body.status },
       include: { createdBy: { select: { id: true, name: true } } },
+    });
+
+    await logUserAction({
+      user: authUser,
+      action: USER_ACTION_CODES.AGENDA_UPDATE,
+      entityType: 'AgendaItem',
+      entityId: updated.id,
+      summary: `Mise à jour agenda : ${updated.title} (${body.status})`,
+      metadata: { label: updated.title, status: body.status },
     });
 
     return NextResponse.json(updated);
