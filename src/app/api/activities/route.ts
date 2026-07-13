@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { logUserAction, USER_ACTION_CODES } from "@/lib/user-action-log";
+import { parseMeetingTitle } from "@/lib/meeting-content";
 
 const ACTIVITY_TYPES = ["CALL", "EMAIL", "WHATSAPP", "MEETING", "NOTE"] as const;
 
@@ -81,6 +82,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
 
+    const meetingDate = body.date ? new Date(body.date) : undefined;
+    if (
+      body.type === "MEETING" &&
+      meetingDate &&
+      Number.isNaN(meetingDate.getTime())
+    ) {
+      return NextResponse.json({ error: "Date invalide" }, { status: 400 });
+    }
+
     const activity = await prisma.activity.create({
       data: {
         type: body.type,
@@ -88,18 +98,50 @@ export async function POST(req: Request) {
         leadId: body.leadId,
         userId: user.id,
         content: body.content,
-        // si une date est fournie (ex. pour un rendez-vous), on l'utilise
-        date: body.date ? new Date(body.date) : undefined,
+        date: meetingDate,
       },
       include: {
         user: { select: { name: true } },
       },
     });
 
+    // Synchronise le calendrier agenda pour chaque rendez-vous
+    if (body.type === "MEETING") {
+      const dueDate = meetingDate ?? activity.date;
+      const title = parseMeetingTitle(body.content);
+      try {
+        const agendaItem = await prisma.agendaItem.create({
+          data: {
+            leadId: body.leadId,
+            createdById: user.id,
+            activityId: activity.id,
+            title: `RDV : ${title}`,
+            description: body.content,
+            dueDate,
+            status: "TODO",
+          },
+        });
+        await logUserAction({
+          user,
+          action: USER_ACTION_CODES.AGENDA_CREATE,
+          entityType: "AgendaItem",
+          entityId: agendaItem.id,
+          summary: `Création agenda liée au rendez-vous : ${title}`,
+          metadata: {
+            label: title,
+            leadId: body.leadId,
+            activityId: activity.id,
+          },
+        });
+      } catch (e) {
+        console.error("Erreur création AgendaItem pour rendez-vous", e);
+      }
+    }
+
     await logUserAction({
       user,
       action: USER_ACTION_CODES.ACTIVITY_CREATE,
-      entityType: 'Activity',
+      entityType: "Activity",
       entityId: activity.id,
       summary: `Ajout d'une interaction (${body.type}) sur un prospect`,
       metadata: { label: body.type, leadId: body.leadId },

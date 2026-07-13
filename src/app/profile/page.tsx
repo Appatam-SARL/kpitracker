@@ -4,7 +4,8 @@ import { useEffect, useState, Suspense } from "react";
 import NeumoCard from "@/components/NeumoCard";
 import { withDashboardLayout } from "@/components/layouts/withDashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
-import { hasGroupCompanyScopeFrontend, isAdminOrManagerLike } from "@/lib/roles";
+import { hasGroupCompanyScopeFrontend, isAdminOrManagerLike, normalizeFrontendRole } from "@/lib/roles";
+import UserRoleBadge from "@/components/UserRoleBadge";
 import { EmailSignatureSettings } from "@/components/profile/EmailSignatureSettings";
 import { ProfileActionHistory } from "@/components/profile/ProfileActionHistory";
 import {
@@ -433,11 +434,13 @@ function ProfilePageInner({
             </div>
           </div>
           <div className="flex flex-col gap-2 text-[11px] text-gray-600">
-            <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-gray-50 border border-gray-100 w-fit">
-              <Shield className="w-3.5 h-3.5 text-primary" />
-              <span className="uppercase tracking-wide text-[10px] font-semibold text-primary">
-                {user?.role ?? "—"}
-              </span>
+            <div className="inline-flex items-center gap-2 w-fit">
+              <Shield className="w-3.5 h-3.5 text-primary shrink-0" />
+              {user?.role ? (
+                <UserRoleBadge role={normalizeFrontendRole(user.role)} />
+              ) : (
+                <span className="text-[10px] text-gray-400">—</span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <Mail className="w-3.5 h-3.5 text-gray-400" />
@@ -522,9 +525,9 @@ function ProfilePageInner({
                   <span className="text-[11px] text-gray-400 uppercase tracking-wide">
                     Rôle
                   </span>
-                  <span className="px-3 py-2 rounded-xl bg-gray-50 border border-gray-100">
-                    {user.role}
-                  </span>
+                  <div className="px-1 py-1">
+                    <UserRoleBadge role={normalizeFrontendRole(user.role)} />
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-[11px] text-gray-400 uppercase tracking-wide">

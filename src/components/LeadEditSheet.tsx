@@ -4,7 +4,6 @@ import { useEffect, useState, type FormEvent } from "react";
 import NeumoCard from "./NeumoCard";
 import { Field } from "./ui/field";
 import ActivityDomainsChecklist from "./ActivityDomainsChecklist";
-import InteractionHistory from "./InteractionHistory";
 import type { Lead } from "./LeadCard";
 import {
   DEFAULT_ACTIVITY_SECTORS,
@@ -33,13 +32,6 @@ export default function LeadEditSheet({ open, lead, onClose, onUpdated, onDelete
   const [status, setStatus] = useState<string>(lead?.status ?? "NEW");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const [products, setProducts] = useState<{ id: string; name: string }[]>([]);
-  const [services, setServices] = useState<{ id: string; name: string }[]>([]);
-  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
-  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
-  const [productsTouched, setProductsTouched] = useState(false);
-  const [servicesTouched, setServicesTouched] = useState(false);
   const [selectedActivityDomains, setSelectedActivityDomains] = useState<string[]>(
     lead?.activityDomains ?? [],
   );
@@ -47,57 +39,9 @@ export default function LeadEditSheet({ open, lead, onClose, onUpdated, onDelete
   useEffect(() => {
     if (!open || !lead) return;
     setSelectedActivityDomains(lead.activityDomains ?? []);
-
-    const fetchInterests = async () => {
-      try {
-        const [prodRes, servRes, leadRes] = await Promise.all([
-          fetch("/api/products"),
-          fetch("/api/services"),
-          fetch(`/api/leads/${lead.id}`),
-        ]);
-        if (prodRes.ok) {
-          const data = await prodRes.json();
-          setProducts(data);
-        }
-        if (servRes.ok) {
-          const data = await servRes.json();
-          setServices(data);
-        }
-        if (leadRes.ok) {
-          const full = await leadRes.json();
-          setSelectedProductIds(
-            Array.isArray(full.products) ? full.products.map((p: any) => p.id) : [],
-          );
-          setSelectedServiceIds(
-            Array.isArray(full.services) ? full.services.map((s: any) => s.id) : [],
-          );
-        }
-      } catch {
-        // silencieux
-      } finally {
-        setProductsTouched(false);
-        setServicesTouched(false);
-      }
-    };
-
-    fetchInterests();
-  }, [open, lead?.id]);
+  }, [open, lead?.id, lead?.activityDomains]);
 
   if (!open || !lead) return null;
-
-  const toggleProduct = (id: string) => {
-    setProductsTouched(true);
-    setSelectedProductIds((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
-    );
-  };
-
-  const toggleService = (id: string) => {
-    setServicesTouched(true);
-    setSelectedServiceIds((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
-    );
-  };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -138,8 +82,6 @@ export default function LeadEditSheet({ open, lead, onClose, onUpdated, onDelete
           civility: civility || undefined,
           notes: notes || undefined,
           status,
-          productIds: productsTouched ? selectedProductIds : undefined,
-          serviceIds: servicesTouched ? selectedServiceIds : undefined,
         }),
       });
 
@@ -303,63 +245,6 @@ export default function LeadEditSheet({ open, lead, onClose, onUpdated, onDelete
                 description="Observations générales sur le lead."
               />
 
-              {(products.length > 0 || services.length > 0) && (
-                <div className="mt-2 flex flex-col gap-2">
-                  <span className="text-[11px] text-gray-500">
-                    Intérêt pour des produits / services
-                  </span>
-                  <div className="grid grid-cols-1 gap-2">
-                    {products.length > 0 && (
-                      <div className="flex flex-col gap-1 rounded-2xl bg-gray-50 border border-gray-100 p-2">
-                        <span className="text-[11px] font-medium text-gray-600">
-                          Produits
-                        </span>
-                        <div className="max-h-24 overflow-y-auto pr-1 flex flex-col gap-1">
-                          {products.map((p) => (
-                            <label
-                              key={p.id}
-                              className="inline-flex items-center gap-2 text-[11px] text-gray-700"
-                            >
-                              <input
-                                type="checkbox"
-                                className="h-3 w-3 rounded border-gray-300 text-primary focus:ring-primary/40"
-                                checked={selectedProductIds.includes(p.id)}
-                                onChange={() => toggleProduct(p.id)}
-                              />
-                              <span className="truncate">{p.name}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {services.length > 0 && (
-                      <div className="flex flex-col gap-1 rounded-2xl bg-gray-50 border border-gray-100 p-2">
-                        <span className="text-[11px] font-medium text-gray-600">
-                          Services
-                        </span>
-                        <div className="max-h-24 overflow-y-auto pr-1 flex flex-col gap-1">
-                          {services.map((s) => (
-                            <label
-                              key={s.id}
-                              className="inline-flex items-center gap-2 text-[11px] text-gray-700"
-                            >
-                              <input
-                                type="checkbox"
-                                className="h-3 w-3 rounded border-gray-300 text-primary focus:ring-primary/40"
-                                checked={selectedServiceIds.includes(s.id)}
-                                onChange={() => toggleService(s.id)}
-                              />
-                              <span className="truncate">{s.name}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
               <div className="flex flex-col gap-1 mt-1">
                 <span className="text-[11px] text-gray-500">Statut</span>
                 <select
@@ -403,10 +288,6 @@ export default function LeadEditSheet({ open, lead, onClose, onUpdated, onDelete
                 </div>
               </div>
             </form>
-
-            <div className=" shrink-0 border-t border-gray-100 pt-4 mt-2">
-              <InteractionHistory lead={lead} />
-            </div>
           </NeumoCard>
         </div>
       </div>

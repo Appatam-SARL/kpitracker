@@ -95,6 +95,8 @@ model User {
   sales            Sale[]
   /// Journal des actions effectuées par cet utilisateur
   actionLogs       UserActionLog[]
+  /// Reports de rendez-vous effectués par cet utilisateur
+  meetingReschedules MeetingReschedule[]
   /// Mise en corbeille
   deletedAt        DateTime?
   deletedBy        User?     @relation("UserDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
@@ -341,6 +343,25 @@ model Activity {
   userId    String
   date      DateTime @default(now())
   content   String
+  /// Historique des reports de date (rendez-vous)
+  reschedules MeetingReschedule[]
+  /// Élément d'agenda lié (créé pour les rendez-vous)
+  agendaItem AgendaItem?
+}
+
+/// Historique des reports de date d'un rendez-vous (Activity MEETING)
+model MeetingReschedule {
+  id           String   @id @default(cuid())
+  activityId   String
+  activity     Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  previousDate DateTime
+  newDate      DateTime
+  reason       String?
+  changedById  String
+  changedBy    User     @relation(fields: [changedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([activityId, createdAt])
 }
 
 enum Role {
@@ -417,6 +438,9 @@ model AgendaItem {
   /// Utilisateur (commercial/membre) qui a créé cette tâche
   createdById String?
   createdBy   User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  /// Rendez-vous (Activity MEETING) lié, si créé depuis l'onglet Rendez-vous
+  activityId  String?      @unique
+  activity    Activity?    @relation(fields: [activityId], references: [id], onDelete: SetNull)
   title       String
   description String?
   dueDate     DateTime

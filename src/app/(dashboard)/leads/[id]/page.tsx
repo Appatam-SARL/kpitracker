@@ -433,7 +433,7 @@ export default function LeadDetailPage({
                 </NeumoCard>
               </div>
 
-              {/* Colonne droite - Entreprise, Deals, Tickets */}
+              {/* Colonne droite - Entreprise, Deals */}
               <div className='lg:col-span-3 flex flex-col gap-4'>
                 <NeumoCard className='p-4 flex flex-col gap-3'>
                   <SkeletonLoader className='h-4 w-24' />
@@ -452,13 +452,6 @@ export default function LeadDetailPage({
                     <SkeletonLoader className='h-3 w-6' />
                   </div>
                   <SkeletonLoader className='w-full h-9 rounded-xl' />
-                </NeumoCard>
-                <NeumoCard className='p-4 flex flex-col gap-3'>
-                  <div className='flex justify-between'>
-                    <SkeletonLoader className='h-4 w-14' />
-                    <SkeletonLoader className='h-3 w-6' />
-                  </div>
-                  <SkeletonLoader className='h-4 w-full' />
                 </NeumoCard>
                 <NeumoCard className='p-4 flex flex-col gap-3'>
                   <SkeletonLoader className='h-4 w-28' />
@@ -985,6 +978,31 @@ export default function LeadDetailPage({
                             : prev,
                         )
                       }
+                      onRescheduleSuccess={(a) =>
+                        setLead((prev) => {
+                          if (!prev) return prev;
+                          const updated = prev.activities.map((act) =>
+                            act.id === a.id ? { ...act, ...a } : act,
+                          );
+                          updated.sort(
+                            (x, y) =>
+                              new Date(y.date).getTime() -
+                              new Date(x.date).getTime(),
+                          );
+                          return { ...prev, activities: updated };
+                        })
+                      }
+                      onUpdateSuccess={(a) =>
+                        setLead((prev) => {
+                          if (!prev) return prev;
+                          return {
+                            ...prev,
+                            activities: prev.activities.map((act) =>
+                              act.id === a.id ? { ...act, ...a } : act,
+                            ),
+                          };
+                        })
+                      }
                     />
                   ) : (
                     <InteractionHistory
@@ -1056,14 +1074,6 @@ export default function LeadDetailPage({
               >
                 + Créer un deal
               </button>
-            </NeumoCard>
-
-            <NeumoCard className='p-4 flex flex-col gap-3'>
-              <div className='flex items-center justify-between'>
-                <h3 className='text-xs font-semibold text-primary'>Tickets</h3>
-                <span className='text-[10px] text-gray-400'>0</span>
-              </div>
-              <p className='text-[11px] text-gray-500'>Aucun ticket</p>
             </NeumoCard>
 
             <LeadAttachmentsBlock leadId={lead.id} />
