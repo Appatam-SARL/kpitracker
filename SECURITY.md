@@ -1,4 +1,4 @@
-# Politique de sécurité — IvorySales CRM
+# Politique de sécurité — KPI Tracker
 
 ## Versions supportées
 

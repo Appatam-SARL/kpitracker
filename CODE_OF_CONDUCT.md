@@ -1,128 +1,124 @@
-# Contributor Covenant Code of Conduct
+# Code de conduite — KPI Tracker
 
-## Our Pledge
+## Notre engagement
 
-We as members, contributors, and leaders pledge to make participation in our
-community a harassment-free experience for everyone, regardless of age, body
-size, visible or invisible disability, ethnicity, sex characteristics, gender
-identity and expression, level of experience, education, socio-economic status,
-nationality, personal appearance, race, religion, or sexual identity
-and orientation.
+En tant que membres, contributeurs et responsables du projet **KPI Tracker**, nous
+nous engageons à faire de la participation au projet une expérience
+respectueuse et sans harcèlement pour toutes et tous, quels que soient l’âge,
+la corpulence, un handicap visible ou invisible, l’origine ethnique, les
+caractéristiques sexuelles, l’identité ou l’expression de genre, le niveau
+d’expérience, la formation, la situation socio-économique, la nationalité,
+l’apparence, la race, la religion, ou l’orientation sexuelle.
 
-We pledge to act and interact in ways that contribute to an open, welcoming,
-diverse, inclusive, and healthy community.
+Nous nous engageons à agir et à interagir de façon ouverte, accueillante,
+diversifiée, inclusive et saine — y compris dans les échanges autour du code,
+des issues, des pull requests et de la documentation métier (rôles, données
+commerciales, sécurité).
 
-## Our Standards
+## Nos standards
 
-Examples of behavior that contributes to a positive environment for our
-community include:
+Comportements qui favorisent un environnement positif :
 
-* Demonstrating empathy and kindness toward other people
-* Being respectful of differing opinions, viewpoints, and experiences
-* Giving and gracefully accepting constructive feedback
-* Accepting responsibility and apologizing to those affected by our mistakes,
-  and learning from the experience
-* Focusing on what is best not just for us as individuals, but for the
-  overall community
+- Faire preuve d’empathie et de bienveillance
+- Respecter les opinions, points de vue et expériences différents
+- Donner et accepter un retour constructif avec élégance
+- Assumer ses erreurs, s’excuser auprès des personnes concernées et en tirer
+  des leçons
+- Prioriser l’intérêt du projet et de l’équipe plutôt que le seul intérêt
+  individuel
 
-Examples of unacceptable behavior include:
+Comportements inacceptables :
 
-* The use of sexualized language or imagery, and sexual attention or
-  advances of any kind
-* Trolling, insulting or derogatory comments, and personal or political attacks
-* Public or private harassment
-* Publishing others' private information, such as a physical or email
-  address, without their explicit permission
-* Other conduct which could reasonably be considered inappropriate in a
-  professional setting
+- Langage ou images à caractère sexuel, et avances non sollicitées
+- Trolling, insultes, remarques dénigrantes, attaques personnelles ou
+  politiques
+- Harcèlement public ou privé
+- Publication d’informations privées d’autrui (adresse, e-mail, etc.) sans
+  permission explicite
+- Exposition volontaire de **secrets** du projet (identifiants base,
+  mots de passe SMTP, cookies de session, données clients / prospects réelles)
+  hors canaux sécurisés prévus
+- Contournement volontaire des contrôles d’accès (rôles, multi-tenant) à des
+  fins non autorisées ou pour « prouver » une faille en public sans
+  signalement privé
+- Tout autre comportement raisonnablement inapproprié dans un cadre
+  professionnel
 
-## Enforcement Responsibilities
+## Responsabilités d’application
 
-Community leaders are responsible for clarifying and enforcing our standards of
-acceptable behavior and will take appropriate and fair corrective action in
-response to any behavior that they deem inappropriate, threatening, offensive,
-or harmful.
+Les responsables du dépôt (mainteneurs / owners) clarifient et font respecter
+ces standards. Ils peuvent prendre des mesures correctives adaptées face à
+tout comportement inapproprié, menaçant, offensant ou nuisible.
 
-Community leaders have the right and responsibility to remove, edit, or reject
-comments, commits, code, wiki edits, issues, and other contributions that are
-not aligned to this Code of Conduct, and will communicate reasons for moderation
-decisions when appropriate.
+Ils peuvent retirer, modifier ou refuser des commentaires, commits, code,
+issues, pull requests et autres contributions contraires à ce code, et
+expliquer les décisions de modération lorsque c’est pertinent.
 
-## Scope
+## Périmètre
 
-This Code of Conduct applies within all community spaces, and also applies when
-an individual is officially representing the community in public spaces.
-Examples of representing our community include using an official e-mail address,
-posting via an official social media account, or acting as an appointed
-representative at an online or offline event.
+Ce code s’applique :
 
-## Enforcement
+- Dans les espaces du projet (dépôt Git, issues, PRs, discussions associées)
+- Lorsque quelqu’un représente officiellement le projet (e-mail officiel,
+  comptes sociaux officiels, événements)
+- Lors des échanges internes liés au développement ou au déploiement
+  d’KPI Tracker
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at
-.
-All complaints will be reviewed and investigated promptly and fairly.
+## Application
 
-All community leaders are obligated to respect the privacy and security of the
-reporter of any incident.
+Les comportements abusifs, le harcèlement ou toute conduite inacceptable
+peuvent être signalés **en privé** aux mainteneurs du dépôt (owners GitHub /
+responsables Appatam — même canal confidentiel que pour les alertes décrites
+dans [SECURITY.md](./SECURITY.md)).
 
-## Enforcement Guidelines
+Toute plainte sera examinée rapidement et équitablement. Les responsables
+s’engagent à respecter la confidentialité du ou de la lanceur·euse d’alerte.
 
-Community leaders will follow these Community Impact Guidelines in determining
-the consequences for any action they deem in violation of this Code of Conduct:
+Pour une **vulnérabilité technique**, suivez en priorité la procédure de
+[SECURITY.md](./SECURITY.md) (pas d’issue publique exploitante).
+
+## Lignes directrices de sanction
 
 ### 1. Correction
 
-**Community Impact**: Use of inappropriate language or other behavior deemed
-unprofessional or unwelcome in the community.
+**Impact** : langage ou comportement non professionnel / inhospitalier.
 
-**Consequence**: A private, written warning from community leaders, providing
-clarity around the nature of the violation and an explanation of why the
-behavior was inappropriate. A public apology may be requested.
+**Conséquence** : avertissement écrit privé, clarification de la faute.
+Des excuses publiques peuvent être demandées.
 
-### 2. Warning
+### 2. Avertissement
 
-**Community Impact**: A violation through a single incident or series
-of actions.
+**Impact** : incident unique ou série d’actions.
 
-**Consequence**: A warning with consequences for continued behavior. No
-interaction with the people involved, including unsolicited interaction with
-those enforcing the Code of Conduct, for a specified period of time. This
-includes avoiding interactions in community spaces as well as external channels
-like social media. Violating these terms may lead to a temporary or
-permanent ban.
+**Conséquence** : avertissement avec interdiction temporaire d’interagir avec
+les personnes concernées (y compris hors dépôt : réseaux sociaux liés au
+projet). Le non-respect peut mener à un bannissement temporaire ou permanent.
 
-### 3. Temporary Ban
+### 3. Bannissement temporaire
 
-**Community Impact**: A serious violation of community standards, including
-sustained inappropriate behavior.
+**Impact** : violation grave ou comportement inapproprié soutenu.
 
-**Consequence**: A temporary ban from any sort of interaction or public
-communication with the community for a specified period of time. No public or
-private interaction with the people involved, including unsolicited interaction
-with those enforcing the Code of Conduct, is allowed during this period.
-Violating these terms may lead to a permanent ban.
+**Conséquence** : interdiction temporaire de toute interaction publique ou
+privée liée à la communauté / au dépôt. Le non-respect peut mener à un
+bannissement permanent.
 
-### 4. Permanent Ban
+### 4. Bannissement permanent
 
-**Community Impact**: Demonstrating a pattern of violation of community
-standards, including sustained inappropriate behavior,  harassment of an
-individual, or aggression toward or disparagement of classes of individuals.
+**Impact** : schéma de violations, harcèlement, ou attaques envers des
+personnes ou groupes.
 
-**Consequence**: A permanent ban from any sort of public interaction within
-the community.
+**Conséquence** : exclusion permanente des interactions publiques liées au
+projet.
 
 ## Attribution
 
-This Code of Conduct is adapted from the [Contributor Covenant][homepage],
-version 2.0, available at
-https://www.contributor-covenant.org/version/2/0/code_of_conduct.html.
+Adapté du [Contributor Covenant][homepage] version 2.0 :
+https://www.contributor-covenant.org/version/2/0/code_of_conduct.html
 
-Community Impact Guidelines were inspired by [Mozilla's code of conduct
-enforcement ladder](https://github.com/mozilla/diversity).
+Lignes directrices inspirées de l’échelle d’application de Mozilla :
+https://github.com/mozilla/diversity
 
 [homepage]: https://www.contributor-covenant.org
 
-For answers to common questions about this code of conduct, see the FAQ at
-https://www.contributor-covenant.org/faq. Translations are available at
-https://www.contributor-covenant.org/translations.
+FAQ : https://www.contributor-covenant.org/faq  
+Traductions : https://www.contributor-covenant.org/translations

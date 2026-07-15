@@ -1,4 +1,4 @@
-# IvorySales CRM
+# KPI Tracker
 
 CRM commercial multi-entreprises pour le suivi des prospects, clients, rendez-vous, objectifs et performances d’équipe.
 
