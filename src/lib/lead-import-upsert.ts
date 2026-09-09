@@ -1,4 +1,5 @@
 import type { LeadImportListValidationResult } from '@/lib/lead-import-validation';
+import type { LeadTypeClient } from '@prisma/client';
 
 export type LeadImportRowData = {
   firstName: string;
@@ -13,6 +14,7 @@ export type LeadImportRowData = {
   source: string | null;
   activitySector: string | null;
   activityDomains: string[];
+  leadType: LeadTypeClient | null;
 };
 
 export function buildLeadDataFromImportRow(
@@ -41,6 +43,7 @@ export function buildLeadDataFromImportRow(
     source: listValidation.source,
     activitySector: listValidation.activitySector,
     activityDomains: listValidation.activityDomains,
+    leadType: listValidation.leadType,
   };
 }
 

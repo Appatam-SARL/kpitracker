@@ -8,6 +8,7 @@ import {
   DEFAULT_ACTIVITY_SECTORS,
   DEFAULT_CIVILITIES,
   DEFAULT_LEAD_SOURCES,
+  LEAD_TYPE_OPTIONS,
 } from "@/config/lead-options";
 
 interface LeadCreateSheetProps {
@@ -27,6 +28,7 @@ const STATUS_OPTIONS = [
 
 export default function LeadCreateSheet({ open, onClose, onCreated }: LeadCreateSheetProps) {
   const [status, setStatus] = useState("NEW");
+  const [leadType, setLeadType] = useState("NON_DETERMINE");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedActivityDomains, setSelectedActivityDomains] = useState<string[]>([]);
@@ -73,6 +75,7 @@ export default function LeadCreateSheet({ open, onClose, onCreated }: LeadCreate
           jobTitle: jobTitle || undefined,
           location: location || undefined,
           notes: notes || undefined,
+          leadType,
           // laissé vide côté front, l'API rattache à une company par défaut
           status,
           companyId: undefined,
@@ -88,6 +91,7 @@ export default function LeadCreateSheet({ open, onClose, onCreated }: LeadCreate
       onCreated?.(created);
       form.reset();
       setStatus("NEW");
+      setLeadType("NON_DETERMINE");
       setSelectedActivityDomains([]);
       onClose();
     } catch (err: any) {
@@ -136,6 +140,20 @@ export default function LeadCreateSheet({ open, onClose, onCreated }: LeadCreate
                 placeholder="Ex: Appatam Sarl"
                 description="Nom de l'entreprise rattachée à ce lead."
               />
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] text-gray-500">Type de client</span>
+                <select
+                  value={leadType}
+                  onChange={(e) => setLeadType(e.target.value)}
+                  className="h-8 rounded-xl border border-gray-200 px-3 text-[11px] bg-gray-50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                >
+                  {LEAD_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <Field
                 name="jobTitle"
                 label="Poste / Fonction"

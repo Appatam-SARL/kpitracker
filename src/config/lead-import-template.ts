@@ -1,4 +1,4 @@
-/** Modèle Excel d'import des prospects (12 colonnes, ordre A→L). */
+/** Modèle Excel d'import des prospects (13 colonnes, ordre A→M). */
 
 export type LeadImportField =
   | 'civility'
@@ -7,6 +7,7 @@ export type LeadImportField =
   | 'phone'
   | 'email'
   | 'companyName'
+  | 'leadType'
   | 'jobTitle'
   | 'activitySector'
   | 'activityDomain'
@@ -21,6 +22,7 @@ export type LeadImportRow = {
   phone?: string;
   email?: string;
   companyName: string;
+  leadType?: string;
   jobTitle?: string;
   activitySector?: string;
   activityDomain?: string;
@@ -36,6 +38,7 @@ export const LEAD_IMPORT_HEADERS = [
   'Contact',
   'Email',
   "Nom de l'entreprise",
+  'Type de client',
   'Poste / Fonction',
   "Secteur d'activités",
   "Domaine d'activités",
@@ -51,8 +54,9 @@ export const LEAD_IMPORT_EXAMPLE_ROW: string[] = [
   '+225 01 23 45 67',
   'contact@acme.ci',
   'Acme Corp',
+  'Entreprise Privée (B2B)',
   'Directeur commercial',
-  'Information & communication',
+  'Information et communication',
   'Informatique et télécommunication, Santé',
   '',
   'Abidjan, Cocody',
@@ -61,9 +65,9 @@ export const LEAD_IMPORT_EXAMPLE_ROW: string[] = [
 
 export const LEAD_IMPORT_HEADERS_HELP = LEAD_IMPORT_HEADERS.join(', ');
 
-/** Largeurs des colonnes A→L (alignées import / export). */
+/** Largeurs des colonnes A→M (alignées import / export). */
 export const LEAD_IMPORT_COLUMN_WIDTHS = [
-  12, 14, 14, 18, 26, 22, 20, 22, 24, 18, 22, 28,
+  12, 14, 14, 18, 26, 22, 28, 20, 22, 24, 18, 22, 28,
 ] as const;
 
 /** Enregistrement lead pour export Excel (même disposition que l'import). */
@@ -74,6 +78,7 @@ export type LeadExportRecord = {
   phone?: string | null;
   email?: string | null;
   companyName?: string | null;
+  leadType?: string | null;
   jobTitle?: string | null;
   activitySector?: string | null;
   activityDomains?: string[] | null;
@@ -91,6 +96,7 @@ export function mapLeadToImportExcelRow(lead: LeadExportRecord): string[] {
     lead.phone ?? '',
     lead.email ?? '',
     lead.companyName ?? '',
+    lead.leadType ?? '',
     lead.jobTitle ?? '',
     lead.activitySector ?? '',
     (lead.activityDomains ?? []).join(', '),
@@ -153,11 +159,21 @@ export function mapHeaderToField(normalized: string): LeadImportField | undefine
   }
 
   if (
+    normalized.includes('typeclient') ||
+    normalized.includes('typedeclient') ||
+    normalized.includes('leadtype') ||
+    (normalized.includes('type') && normalized.includes('client'))
+  ) {
+    return 'leadType';
+  }
+
+  if (
     normalized.includes('nomentreprise') ||
     normalized.includes('raisonsociale') ||
     (normalized.includes('entreprise') &&
       !normalized.includes('domaine') &&
-      !normalized.includes('secteur'))
+      !normalized.includes('secteur') &&
+      !normalized.includes('type'))
   ) {
     return 'companyName';
   }

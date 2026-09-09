@@ -11,6 +11,7 @@ import {
   DEFAULT_ACTIVITY_SECTORS,
   DEFAULT_CIVILITIES,
   DEFAULT_LEAD_SOURCES,
+  DEFAULT_LEAD_TYPES,
 } from '@/config/lead-options';
 import type { DataValidation, Workbook, Worksheet } from 'exceljs';
 
@@ -32,13 +33,19 @@ const LIST_COLUMN_CONFIG: ReadonlyArray<{
     error: 'Choisissez une civilité dans la liste (M., Mme, Mlle, etc.).',
   },
   {
-    column: 'H',
+    column: 'G',
+    listColumn: 'D',
+    options: DEFAULT_LEAD_TYPES,
+    error: 'Choisissez un type de client dans la liste.',
+  },
+  {
+    column: 'I',
     listColumn: 'B',
     options: DEFAULT_ACTIVITY_SECTORS,
     error: "Choisissez un secteur d'activités dans la liste.",
   },
   {
-    column: 'J',
+    column: 'K',
     listColumn: 'C',
     options: DEFAULT_LEAD_SOURCES,
     error: 'Choisissez une source dans la liste.',
@@ -101,10 +108,12 @@ function addHiddenListSheet(workbook: Workbook): Record<string, number> {
   const civilityCount = fillListColumn(listSheet, 'A', DEFAULT_CIVILITIES);
   const sectorCount = fillListColumn(listSheet, 'B', DEFAULT_ACTIVITY_SECTORS);
   const sourceCount = fillListColumn(listSheet, 'C', DEFAULT_LEAD_SOURCES);
+  const leadTypeCount = fillListColumn(listSheet, 'D', DEFAULT_LEAD_TYPES);
   return {
     A: civilityCount,
     B: sectorCount,
     C: sourceCount,
+    D: leadTypeCount,
   };
 }
 

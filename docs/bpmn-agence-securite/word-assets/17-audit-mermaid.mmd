@@ -1,0 +1,72 @@
+flowchart TB
+  subgraph AGENCE["Pool: Agence - Audit & conformité"]
+    direction TB
+
+    S1([Timer: Programme d'audit])
+    S2([Message: Demande audit])
+    S3([Signal: Alerte automatique])
+
+    U01[U01 Planifier mission]
+    U02[U02 Générer checklist]
+    U03[U03 Notifier parties]
+    U04[U04 Contrôles humains]
+    U05[U05 Contrôles automatiques]
+    U06[U06 Joindre preuves]
+    U07[U07 Scorer conformité]
+    U08[U08 Ouvrir NC]
+    U09[U09 Classer criticité]
+    U10[U10 Analyser cause]
+    U11[U11 Définir CAPA]
+    U12[U12 Exécuter CAPA]
+    U13[U13 Vérifier efficacité]
+    U14[U14 Clôturer NC]
+    U15[U15 Rapport PDF]
+    U16[U16 Exporter piste d'audit]
+    U17[U17 Clôturer mission]
+    U18[U18 Archiver]
+
+    G01{G01 Audit inopiné?}
+    G02{G02 Contrôle conforme?}
+    G03{G03 Criticité CRITICAL?}
+    G04{G04 Cause identifiée?}
+    G05{G05 CAPA terminées?}
+    G06{G06 Efficacité OK?}
+    G07{G07 NC critiques ouvertes?}
+    G08[G08 AND contrôles]
+    G09{G09 Diffusion client?}
+
+    E1([End: Mission close])
+    E2([End: Export trail])
+
+    S1 --> U01
+    S2 --> U01
+    S3 --> U01
+    U01 --> U02 --> G01
+    G01 -->|Non| U03 --> G08
+    G01 -->|Oui| G08
+    G08 --> U04
+    G08 --> U05
+    U04 --> U06
+    U05 --> U06
+    U06 --> U07 --> G02
+    G02 -->|Oui| U07
+    G02 -->|Non| U08 --> U09 --> G03
+    G03 -->|Oui| U10
+    G03 -->|Non| U10
+    U10 --> G04
+    G04 -->|Non| U10
+    G04 -->|Oui| U11 --> U12 --> G05
+    G05 -->|Non| U12
+    G05 -->|Oui| U13 --> G06
+    G06 -->|Non| U11
+    G06 -->|Oui| U14 --> U15 --> G09
+    G09 -->|Oui/Non| G07
+    G07 -->|Oui| U14
+    G07 -->|Non| U17 --> U18 --> E1
+    U16 --> E2
+  end
+
+  subgraph EXT["Pool: Client / Autorité"]
+    X1([Réception rapport expurgé])
+    G09 -.-> X1
+  end

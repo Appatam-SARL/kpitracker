@@ -1,0 +1,58 @@
+flowchart TB
+  subgraph POOL["Pool: Agence de sécurité - Gestion équipements"]
+    direction TB
+
+    S1([Start: Réception lot])
+    S2([Start: Demande affectation])
+    S3([Start: Panne / Perte / Vol])
+    S4([Start: Restitution])
+    S5([Timer: Inventaire / Maintenance])
+
+    A01[A01 Enregistrer réception]
+    A02[A02 Générer IDs QR/NFC]
+    A03[A03 Étiqueter / photo]
+    A04[A04 Créer demande affectation]
+    A05[A05 Contrôler disponibilité]
+    A06[A06 Remise + scan QR/NFC]
+    A07[A07 Notifier agent]
+    A08[A08 Déclarer panne]
+    A09[A09 Maintenance]
+    A10[A10 Déclarer perte/vol]
+    A11[A11 Décision imputation]
+    A12[A12 Lancer restitution]
+    A13[A13 Contrôle état + scan]
+    A14[A14 Réintégrer stock / retenue]
+    A15[A15 Inventaire périodique]
+    A16[A16 Clôturer + audit log]
+
+    G01{G01 Stock OK?}
+    G03{G03 Réparable?}
+    G04{G04 Imputable agent?}
+    G05{G05 Restitution OK?}
+    G07{G07 Écart critique?}
+
+    E1([End: En stock])
+    E2([End: Affecté])
+    E3([End: Maintenu / Réformé])
+    E4([End: Perte clôturée])
+    E5([End: Restitué])
+    E6([End: Inventaire clos])
+
+    S1 --> A01 --> A02 --> A03 --> E1
+    S2 --> A04 --> A05 --> G01
+    G01 -->|Oui| A06 --> A07 --> E2
+    G01 -->|Non| A04
+    S3 --> A08 --> A09 --> G03
+    G03 -->|Oui| E3
+    G03 -->|Non réforme| E3
+    S3 --> A10 --> G04
+    G04 -->|Oui| A11 --> E4
+    G04 -->|Non| A11 --> E4
+    S4 --> A12 --> A13 --> G05
+    G05 -->|Oui| A14 --> E5
+    G05 -->|Non| A14 --> E5
+    S5 --> A15 --> G07
+    G07 -->|Oui alerte| A16 --> E6
+    G07 -->|Non| A16 --> E6
+    S5 --> A09
+  end

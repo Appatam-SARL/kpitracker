@@ -95,6 +95,8 @@ model User {
   sales            Sale[]
   /// Journal des actions effectuées par cet utilisateur
   actionLogs       UserActionLog[]
+  /// Jetons de réinitialisation de mot de passe
+  passwordResetTokens PasswordResetToken[]
   /// Mise en corbeille
   deletedAt        DateTime?
   deletedBy        User?     @relation("UserDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
@@ -105,6 +107,20 @@ model User {
   attachmentsDeleted LeadAttachment[] @relation("LeadAttachmentDeletedBy")
 
   @@index([companyId, deletedAt])
+}
+
+/// Jeton de réinitialisation de mot de passe (hashé, usage unique, expiration courte)
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  /// SHA-256 du jeton envoyé par e-mail
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model Lead {
@@ -118,6 +134,8 @@ model Lead {
   civility   String?
   /// Secteur d'activités (colonne Excel « Secteur d'activités »)
   activitySector String?
+  /// Type de client (TypeClient)
+  leadType LeadTypeClient @default(NON_DETERMINE)
   /// Nom de la compagnie au moment de la création du lead
   companyName String?
   /// Poste / fonction du prospect dans son entreprise
@@ -358,6 +376,19 @@ enum LeadStatus {
   QUALIFIED
   LOST
   CONVERTED
+}
+
+enum LeadTypeClient {
+  COLLECTIVITE_TERRITORIALE
+  PARTICULIER_B2C
+  ENTREPRISE_PRIVEE_B2B
+  GOUVERNEMENT_SECTEUR_PUBLIC
+  HOTELS_ET_ESPACES_EVENEMENTIEL
+  INSTITUTION_MULTILATERALE_OI
+  AGENCE_DE_COOPERATION_OPERATEUR
+  INSTITUTION_FINANCIERE_INTERNATIONALE_IFI
+  ONG_ASSOCIATION_ACADEMIQUE
+  NON_DETERMINE
 }
 
 enum ActivityType {

@@ -1,0 +1,36 @@
+flowchart TB
+  Start([Start Signal contrat / Ajout site]) --> ST1[Service Task Créer Site DRAFT]
+  ST1 --> XOR0{XOR Survey requis?}
+  XOR0 -->|Oui| UT0[User Task Planifier visite]
+  UT0 --> MSG0[Send Task Notifier accès client]
+  MSG0 --> MT1[Manual Task Relevés terrain GPS/photos]
+  MT1 --> UT1[User Task Saisir géoloc & périmètre]
+  UT1 --> ST2[Service Task Géocode / géofence]
+  XOR0 -->|Non| ST2
+  ST2 --> AND1[AND Setup parallèle]
+  AND1 --> UT2[User Task Plan de garde]
+  AND1 --> UT3[User Task Matrice risques]
+  AND1 --> UT4[User Task Checkpoints]
+  UT2 --> AND2[AND join]
+  UT3 --> AND2
+  UT4 --> AND2
+  AND2 --> ST3[Service Task Générer QR / lier NFC]
+  ST3 --> UT5[User Task Équipements requis]
+  UT5 --> XOR1{XOR Stock suffisant?}
+  XOR1 -->|Non| UT6[User Task Commande / transfert]
+  UT6 --> UT7[User Task Consignes de poste]
+  XOR1 -->|Oui| UT7
+  UT7 --> XOR2{XOR Validation client requise?}
+  XOR2 -->|Oui| UT8[User Task / Message Approbation facility]
+  XOR2 -->|Non| UT9[User Task Checklist Qualité]
+  UT8 --> UT9
+  UT9 --> XOR3{XOR QA OK?}
+  XOR3 -->|Non| AND1
+  XOR3 -->|Oui| UT10[User Task Validation Ops go-live]
+  UT10 --> XOR4{XOR GO / REWORK / SUSPEND}
+  XOR4 -->|REWORK| AND1
+  XOR4 -->|SUSPEND| EndS([End SUSPENDED])
+  XOR4 -->|GO| ST4[Service Task Statut OPERATIONAL]
+  ST4 --> SIG[Signal Prêt affectation agents]
+  SIG --> NOTIF[Send Task Notifications]
+  NOTIF --> EndO([End OPERATIONAL])

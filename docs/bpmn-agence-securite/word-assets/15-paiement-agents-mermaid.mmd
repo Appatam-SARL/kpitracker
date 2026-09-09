@@ -1,0 +1,62 @@
+flowchart TB
+  subgraph AGENCE["Pool: Agence - Paiement agents"]
+    direction TB
+    T0([Timer: Fin période paie])
+    P01[P01 Ouvrir PayrollRun]
+    P02[P02 Snapshot pointages/absences]
+    P03[P03 Calculer brut/net]
+    P04[P04 Détecter anomalies]
+    P05[P05 Corriger heures Ops]
+    P06[P06 Contrôle RH]
+    P07[P07 Validation Direction]
+    P08[P08 Approuver run]
+    P09[P09 Préparer lots paiement]
+    P10[P10 Exécuter paiements]
+    P11[P11 Traiter échecs]
+    P12[P12 Générer bulletins PDF]
+    P13[P13 Notifier agents]
+    P14[P14 Traiter réclamation]
+    P15[P15 Clôturer run]
+
+    G01{G01 Pointages OK?}
+    G02{G02 Anomalies critiques?}
+    G03{G03 Masse > seuil?}
+    G04{G04 Moyen paiement valide?}
+    G05{G05 PSP succès?}
+    G06{G06 Retry?}
+    G07{G07 Réclamation fondée?}
+
+    E1([End: Run clos])
+    E2([End: Régularisation])
+
+    T0 --> P01 --> P02 --> P03 --> G01
+    G01 -->|Non HOLD| P06
+    G01 -->|Oui| P04 --> G02
+    G02 -->|Oui| P05 --> P06
+    G02 -->|Non| P06
+    P06 --> G03
+    G03 -->|Oui| P07 --> P08
+    G03 -->|Non| P08
+    P08 --> P09 --> G04
+    G04 -->|Non| P11
+    G04 -->|Oui| P10 --> G05
+    G05 -->|Oui| P12 --> P13 --> P15 --> E1
+    G05 -->|Non| G06
+    G06 -->|Oui| P10
+    G06 -->|Non| P11 --> P15
+  end
+
+  subgraph PSP["Pool: PSP Mobile Money / Banque"]
+    PSP1([Exécution transfert])
+    P10 <--> PSP1
+  end
+
+  subgraph AGENT["Pool: Agent"]
+    A1([Réception notification])
+    A2[Consulter bulletin]
+    A3[Ouvrir réclamation]
+    P13 --> A1 --> A2
+    A2 --> A3 --> P14 --> G07
+    G07 -->|Oui| E2
+    G07 -->|Non| E1
+  end

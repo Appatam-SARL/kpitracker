@@ -1,0 +1,35 @@
+flowchart TB
+  Start([Start Devis accepté / Renouvellement]) --> ST1[Service Task Créer Contrat DRAFT]
+  ST1 --> ST2[Service Task Upsert ClientAccount]
+  ST2 --> AND1[AND KYC // Négociation]
+  AND1 --> UT1[User Task / Message Collecte KYC]
+  AND1 --> UT2[User Task Négocier conditions]
+  UT1 --> ST3[Service Task Contrôle auto KYC]
+  ST3 --> XOR1{XOR KYC OK?}
+  XOR1 -->|Reject| UT1
+  XOR1 -->|Approve/Waive| AND2[AND join]
+  UT2 --> XOR2{XOR Clauses hors modèle?}
+  XOR2 -->|Oui| UT3[User Task Revue juridique]
+  XOR2 -->|Non| AND2
+  UT3 --> AND2
+  AND2 --> UT4[User Task Revue Finance]
+  UT4 --> XOR3{XOR Seuil DG?}
+  XOR3 -->|Oui| UT5[User Task Approbation DG]
+  XOR3 -->|Non| ST4[Service Task Générer PDF]
+  UT5 -->|Reject| XOR6{XOR Renégocier / Annuler}
+  XOR6 -->|Renégocier| UT2
+  XOR6 -->|Annuler| EndC([End CANCELLED])
+  UT5 -->|Approve| ST4
+  ST4 --> XOR4{XOR Canal signature}
+  XOR4 -->|E-sign| ST5[Service Task Lancer e-sign]
+  ST5 --> MSG1[Message OTP / lien signataire]
+  MSG1 --> MSG2[Message Catch Webhook signé]
+  XOR4 -->|Papier| MT1[Manual Task Signature papier]
+  MT1 --> UT6[User Task Upload scan]
+  MSG2 --> XOR5{XOR Go activation?}
+  UT6 --> XOR5
+  XOR5 -->|Non| UT2
+  XOR5 -->|Oui| ST6[Service Task Activer contrat]
+  ST6 --> SIG[Signal Création site]
+  SIG --> NOTIF[Send Task Notifications]
+  NOTIF --> EndA([End ACTIVE])

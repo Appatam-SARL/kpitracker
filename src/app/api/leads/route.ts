@@ -30,6 +30,20 @@ const createLeadSchema = z.object({
   jobTitle: z.string().optional(),
   location: z.string().optional(),
   notes: z.string().optional(),
+  leadType: z
+    .enum([
+      'COLLECTIVITE_TERRITORIALE',
+      'PARTICULIER_B2C',
+      'ENTREPRISE_PRIVEE_B2B',
+      'GOUVERNEMENT_SECTEUR_PUBLIC',
+      'HOTELS_ET_ESPACES_EVENEMENTIEL',
+      'INSTITUTION_MULTILATERALE_OI',
+      'AGENCE_DE_COOPERATION_OPERATEUR',
+      'INSTITUTION_FINANCIERE_INTERNATIONALE_IFI',
+      'ONG_ASSOCIATION_ACADEMIQUE',
+      'NON_DETERMINE',
+    ])
+    .optional(),
   // on reste aligné avec l'enum LeadStatus du schema Prisma
   status: z
     .enum(['NEW', 'CONTACTED', 'QUALIFIED', 'LOST', 'CONVERTED'])
@@ -55,6 +69,20 @@ const updateLeadSchema = z.object({
   jobTitle: z.string().optional(),
   location: z.string().optional(),
   notes: z.string().optional(),
+  leadType: z
+    .enum([
+      'COLLECTIVITE_TERRITORIALE',
+      'PARTICULIER_B2C',
+      'ENTREPRISE_PRIVEE_B2B',
+      'GOUVERNEMENT_SECTEUR_PUBLIC',
+      'HOTELS_ET_ESPACES_EVENEMENTIEL',
+      'INSTITUTION_MULTILATERALE_OI',
+      'AGENCE_DE_COOPERATION_OPERATEUR',
+      'INSTITUTION_FINANCIERE_INTERNATIONALE_IFI',
+      'ONG_ASSOCIATION_ACADEMIQUE',
+      'NON_DETERMINE',
+    ])
+    .optional(),
   status: z
     .enum(['NEW', 'CONTACTED', 'QUALIFIED', 'LOST', 'CONVERTED'])
     .optional(),
@@ -241,6 +269,7 @@ export async function POST(req: Request) {
         source: body.source,
         civility: body.civility,
         activitySector: body.activitySector,
+        leadType: body.leadType,
         activityDomains:
           activityDomains.length > 0
             ? {
@@ -372,6 +401,7 @@ export async function PATCH(req: Request) {
         source: body.source,
         civility: body.civility,
         activitySector: body.activitySector,
+        leadType: body.leadType,
         companyName: body.companyName,
         jobTitle: body.jobTitle,
         location: body.location,

@@ -17,6 +17,7 @@ import MeetingsTabContent from '@/components/MeetingsTabContent';
 import DashboardShell from '@/components/layouts/DashboardShell';
 import NeumoCard from '@/components/NeumoCard';
 import SkeletonLoader from '@/components/SkeletonLoader';
+import { formatLeadTypeLabel } from '@/config/lead-options';
 import { ArrowLeft, Building2, Check, ChevronDown, Search } from 'lucide-react';
 import { CONVERT_REQUIRES_PIVOT_INTERESTS_MESSAGE } from '@/lib/lead-conversion';
 import Link from 'next/link';
@@ -69,6 +70,7 @@ interface LeadDetail {
   activityDomains?: string[];
   notes?: string | null;
   civility?: string | null;
+  leadType?: string | null;
   status: string;
   companyId: string;
   company: { id: string; name: string };
@@ -502,6 +504,7 @@ export default function LeadDetailPage({
     activitySector: lead.activitySector,
     activityDomains: lead.activityDomains ?? [],
     civility: lead.civility,
+    leadType: lead.leadType,
   };
 
   const initials =
@@ -800,6 +803,12 @@ export default function LeadDetailPage({
                   <div className='flex justify-between'>
                     <span className='text-gray-500'>Téléphone</span>
                     <span className='text-gray-700'>{lead.phone ?? '—'}</span>
+                  </div>
+                  <div className='flex justify-between'>
+                    <span className='text-gray-500'>Type de client</span>
+                    <span className='text-gray-700'>
+                      {formatLeadTypeLabel(lead.leadType)}
+                    </span>
                   </div>
                   <div className='flex justify-between'>
                     <span className='text-gray-500'>

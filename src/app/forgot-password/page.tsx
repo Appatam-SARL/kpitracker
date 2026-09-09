@@ -1,6 +1,7 @@
 'use client';
 
 import { Field } from '@/components/ui/field';
+import { fetchApi, readApiError } from '@/lib/fetch-api';
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 
@@ -21,17 +22,17 @@ export default function ForgotPasswordPage() {
       const formData = new FormData(form);
       const email = String(formData.get('email') ?? '').trim();
 
-      const res = await fetch('/api/forgot-password', {
+      const res = await fetchApi('/api/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
-      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(
-          typeof data.error === 'string'
-            ? data.error
-            : "Impossible d'envoyer le lien de réinitialisation.",
+          await readApiError(
+            res,
+            "Impossible d'envoyer le lien de réinitialisation.",
+          ),
         );
       }
       setSent(true);
@@ -88,7 +89,7 @@ export default function ForgotPasswordPage() {
               label='Adresse email'
               placeholder='vous@entreprise.ci'
               required
-              disabled={loading}
+              disabled={loading || sent}
             />
 
             {error && (
@@ -106,12 +107,14 @@ export default function ForgotPasswordPage() {
 
             <button
               type='submit'
-              disabled={loading}
+              disabled={loading || sent}
               className='inline-flex w-full items-center justify-center rounded-xl bg-linear-to-r from-sky-500 via-sky-600 to-blue-700 px-4 py-2.5 text-sm font-medium text-white shadow-md shadow-sky-500/25 transition hover:from-sky-600 hover:via-sky-700 hover:to-blue-800 disabled:opacity-60 disabled:cursor-not-allowed'
             >
               {loading
                 ? 'Envoi en cours...'
-                : 'Envoyer le lien de réinitialisation'}
+                : sent
+                  ? 'Lien envoyé'
+                  : 'Envoyer le lien de réinitialisation'}
             </button>
           </form>
 

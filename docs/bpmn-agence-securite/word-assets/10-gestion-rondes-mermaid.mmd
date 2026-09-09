@@ -1,0 +1,30 @@
+flowchart TB
+  Start([Start: timer / manuel / post-PDS]) --> Instanciate[ST: Instancier ronde]
+  Instanciate --> Notify[MSG: Notifier agent]
+  Notify --> OnDuty{XOR: agent IN_SERVICE?}
+  OnDuty -->|Non| Block([End: bloqué])
+  OnDuty -->|Oui| Begin[UT: Démarrer ronde]
+  Begin --> Timers[Timers: SLA global et inter-points]
+  Timers --> Scan[UT: Scanner checkpoint]
+  Scan --> Validate[ST: Valider tag/ordre/temps]
+  Validate --> Valid{XOR: checkpoint OK?}
+  Valid -->|Non| DevAlert[MSG: Alerte écart]
+  DevAlert --> Review[UT: Traiter écart Chef site]
+  Review --> More
+  Valid -->|Oui| Anom{XOR: anomalie?}
+  Anom -->|Oui| Photo[UT: Photo + description]
+  Photo --> Sev{XOR: gravité}
+  Sev -->|Haute| Inc[ST: Escalade incident 11]
+  Sev -->|Basse| LogA[ST: Log anomalie]
+  Anom -->|Non| More
+  Inc --> More
+  LogA --> More{XOR: checkpoints restants?}
+  More -->|Oui| Scan
+  More -->|Non| Close[ST: Clôturer + score]
+  Close --> Report{XOR: reporting client?}
+  Report -->|Oui| Send[MSG: Rapport client]
+  Report -->|Non| EndOK
+  Send --> EndOK([End: COMPLETED])
+
+  LateStart[Timer: ronde non démarrée] --> Escalade[MSG: Alerte Dispatch]
+  Escalade --> EndLate([End: non-démarrage signalé])

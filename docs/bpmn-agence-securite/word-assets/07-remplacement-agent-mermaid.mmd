@@ -1,0 +1,27 @@
+flowchart TB
+  Start([Start: besoin remplacement]) --> Detect[ST: Détecter / créer demande]
+  Detect --> Match[ST: Matching candidats]
+  Match --> GW2{XOR: candidats?}
+  GW2 -->|Non| EscManual[MSG: Escalade Dispatch]
+  EscManual --> Fail([End: échec / couverture manuelle])
+  GW2 -->|Oui| NotifyCand[MSG: Notifier candidats]
+  NotifyCand --> Timer[Timer: attente réponse]
+  Timer --> DecideAgent{XOR: réponse}
+  DecideAgent -->|Refuse / Timeout| NextCand{XOR: encore candidats?}
+  NextCand -->|Oui| NotifyCand
+  NextCand -->|Non| EscManual
+  DecideAgent -->|Accept| AutoVal{XOR: auto-validation?}
+  AutoVal -->|Oui| NotifyAll
+  AutoVal -->|Non| Validate[UT: Valider Chef site / Dispatch]
+  Validate --> NeedDir{XOR: escalade Direction?}
+  NeedDir -->|Oui| Dir[UT: Décision Direction]
+  NeedDir -->|Non| NotifyAll
+  Dir --> DirOK{XOR: approuvé?}
+  DirOK -->|Non| Match
+  DirOK -->|Oui| NotifyAll[AND: Notifier parties]
+  NotifyAll --> Update[ST: MAJ planning]
+  Update --> Correlate[ST: Corréler prise de service]
+  Correlate --> Sla{XOR: SLA couverture OK?}
+  Sla -->|Oui| EndOK([End: COMPLETED])
+  Sla -->|Non| Alert[MSG: Alerte critique client]
+  Alert --> EndFail([End: FAILED / incident ops])

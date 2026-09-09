@@ -1,0 +1,36 @@
+flowchart TB
+  Start([Start Lead inbound / manuel / import]) --> ST1[Service Task Créer Lead NEW]
+  ST1 --> ST2[Service Task Dédoublonnage]
+  ST2 --> XOR1{XOR Doublon?}
+  XOR1 -->|Oui| UT0[User Task Résoudre doublon]
+  XOR1 -->|Non| UT1[User Task Attribuer owner]
+  UT0 --> UT1
+  UT1 --> UT2[User Task Qualifier]
+  UT2 --> XOR2{XOR Qualifié?}
+  XOR2 -->|Disqualifié| EndD([End DISQUALIFIED])
+  XOR2 -->|Nurture| TMRN[Timer Rappel nurture]
+  TMRN --> UT2
+  XOR2 -->|Qualifié| XOR3{XOR Visite requise?}
+  XOR3 -->|Non| ST3[Service Task Scoring]
+  XOR3 -->|Oui| AND1[AND Planifier]
+  AND1 --> UT3[User Task Créneau commercial]
+  AND1 --> UT4[User Task Assigner technicien]
+  UT3 --> AND2[AND join]
+  UT4 --> AND2
+  AND2 --> MSG1[Send Task Confirmation client]
+  MSG1 --> MT1[Manual Task Visite terrain]
+  MT1 --> UT5[User Task Rapport de visite]
+  UT5 --> ST3
+  ST3 --> UT6[User Task Élaborer devis]
+  UT6 --> XOR4{XOR Hors grille?}
+  XOR4 -->|Oui| UT7[User Task Validation Manager]
+  XOR4 -->|Non| ST4[Service Task Envoyer devis]
+  UT7 -->|Approuvé| ST4
+  UT7 -->|Refusé| UT6
+  ST4 --> TMR[Timer Relances SLA]
+  TMR --> XOR5{XOR Réponse client}
+  XOR5 -->|Négocier| UT6
+  XOR5 -->|Refus| EndL([End LOST])
+  XOR5 -->|Silence max| EndN([End NURTURE/LOST])
+  XOR5 -->|Acceptation| ST5[Service Task Handoff contractualisation]
+  ST5 --> EndW([End WON_READY_FOR_CONTRACT])

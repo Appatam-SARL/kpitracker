@@ -19,6 +19,7 @@ export interface Lead {
   activitySector?: string | null;
   activityDomains?: string[];
   civility?: string | null;
+  leadType?: string | null;
   crmCompanyName?: string;
 }
 

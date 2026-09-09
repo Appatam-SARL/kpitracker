@@ -1,0 +1,37 @@
+flowchart TB
+  Start([Start Site prêt / Timer / Trou / Absence]) --> ST1[Service Task Créer StaffingNeed]
+  ST1 --> ST2[Service Task Matching agents]
+  ST2 --> XOR1{XOR Candidats suffisants?}
+  XOR1 -->|Non| UT0[User Task Escalade Ops]
+  UT0 --> ST2
+  XOR1 -->|Oui| UT1[User Task Sélection agents]
+  UT1 --> ST3[Service Task Contrôle conflits planning]
+  ST3 --> XOR2{XOR Conflit?}
+  XOR2 -->|Oui| UT1
+  XOR2 -->|Non| ST4[Service Task Créer Assignments PROPOSED]
+  ST4 --> XOR3{XOR Validation chef site?}
+  XOR3 -->|Oui| UT2[User Task Validation chef de site]
+  UT2 --> XOR4{XOR APPROVE / REJECT}
+  XOR4 -->|REJECT| UT1
+  XOR4 -->|APPROVE| AND1[AND Notifier agents]
+  XOR3 -->|Non| AND1
+  AND1 --> MSG1[Send Task WhatsApp/SMS/Push agent]
+  MSG1 --> UT3[User Task / Message Accusé OUI/NON]
+  UT3 --> XOR5{XOR Confirm / Decline / Timeout}
+  XOR5 -->|Decline / Timeout| ST2
+  XOR5 -->|Confirm| ST5[Service Task Maj besoin FILLED/PARTIAL]
+  ST5 --> TMR1[Timer Rappels pré-shift]
+  TMR1 --> UT4[User Task Check-in GPS/QR/NFC]
+  UT4 --> ST6[Service Task Contrôle géofence/QR]
+  ST6 --> XOR6{XOR Check-in valide?}
+  XOR6 -->|Non| ALERT[Send Task Alerte chef site]
+  ALERT --> XOR7{XOR Override?}
+  XOR7 -->|Non| XOR8
+  XOR7 -->|Oui| ST7[Service Task CHECKED_IN]
+  XOR6 -->|Oui| ST7
+  ST7 --> XOR8{XOR No-show?}
+  XOR8 -->|Oui Timer| ST8[Service Task NO_SHOW + besoin urgent]
+  ST8 --> ST1
+  XOR8 -->|Non| TMR2[Timer Fin de shift]
+  TMR2 --> ST9[Service Task COMPLETED]
+  ST9 --> EndOk([End Assignment COMPLETED])

@@ -50,7 +50,9 @@ function runMiddleware(request: NextRequest): NextResponse {
     if (
       mustChangePassword &&
       pathname !== '/api/profile/password' &&
-      pathname !== '/api/auth/logout'
+      pathname !== '/api/auth/logout' &&
+      pathname !== '/api/forgot-password' &&
+      pathname !== '/api/reset-password'
     ) {
       return NextResponse.json(
         { error: 'Changement de mot de passe requis' },
@@ -60,15 +62,18 @@ function runMiddleware(request: NextRequest): NextResponse {
     return NextResponse.next();
   }
 
+  const isTokenResetPath = pathname === '/reset-password/confirm';
+
   if (hasAuth && mustChangePassword) {
-    if (pathname !== '/reset-password') {
+    if (pathname !== '/reset-password' && !isTokenResetPath) {
       return redirectTo(request, '/reset-password');
     }
     return NextResponse.next();
   }
 
   // Déjà connecté ET sur une page publique → redirection vers le dashboard
-  if (hasAuth && isPublicPath(pathname)) {
+  // (sauf le lien e-mail de réinitialisation, utilisable même si une session existe)
+  if (hasAuth && isPublicPath(pathname) && !isTokenResetPath) {
     return redirectTo(request, '/');
   }
 

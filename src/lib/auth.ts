@@ -298,3 +298,45 @@ export async function canSoftDeleteUserAccount(
 
   return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
 }
+
+/**
+ * Un DG (MANAGER) ou un ADMIN peut définir le mot de passe d'un membre de
+ * sa société, y compris un autre DG. Un DG ne peut pas modifier un ADMIN.
+ * Chacun change son propre mot de passe depuis son profil.
+ */
+export function canSetTeamMemberPassword(
+  actor: AuthUser,
+  target: { id: string; companyId: string; role: Role },
+): true | NextResponse {
+  if (!actor.companyId) {
+    return NextResponse.json(
+      { error: "Utilisateur sans entreprise" },
+      { status: 403 },
+    );
+  }
+  if (target.id === actor.id) {
+    return NextResponse.json(
+      { error: "Utilisez votre profil pour modifier votre propre mot de passe" },
+      { status: 403 },
+    );
+  }
+
+  const isAdmin = actor.role === "ADMIN";
+  const isDg = actor.role === "MANAGER";
+  if (!isAdmin && !isDg) {
+    return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+  }
+
+  if (target.companyId !== actor.companyId) {
+    return NextResponse.json(
+      { error: "Utilisateur non trouvé ou autre entreprise" },
+      { status: 403 },
+    );
+  }
+
+  if (isDg && target.role === "ADMIN") {
+    return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+  }
+
+  return true;
+}

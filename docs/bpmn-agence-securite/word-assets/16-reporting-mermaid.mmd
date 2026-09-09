@@ -1,0 +1,56 @@
+flowchart TB
+  subgraph POOL["Pool: Agence - Reporting"]
+    direction TB
+
+    S1([Timer: Schedule périodique])
+    S2([Message: Demande ad hoc])
+    S3([Signal: Seuil KPI])
+
+    R01[R01 Déclencher run]
+    R02[R02 Collecter / agréger]
+    R03[R03 Vérifier fraîcheur]
+    R04[R04 Appliquer scope RBAC]
+    R05[R05 Calculer KPI]
+    R06[R06 Insights IA]
+    R07[R07 Créer ReportInstance]
+    R08[R08 Valider rapport sensible]
+    R09[R09 Exporter PDF/Excel/CSV]
+    R10[R10 Diffuser]
+    R11[R11 MAJ dashboards live]
+    R12[R12 Évaluer alertes KPI]
+    R13[R13 Acquitter alerte]
+    R14[R14 Archiver]
+    R15[R15 Retry / échec]
+
+    G01{G01 Fraîcheur OK?}
+    G02{G02 Validation humaine?}
+    G03{G03 Approuvé?}
+    G04{G04 Destinataire client?}
+    G05{G05 Seuil dépassé?}
+    G06{G06 ACK sous SLA?}
+    G07[G07 AND multi-canaux]
+
+    E1([End: Rapport diffusé])
+    E2([End: Alerte traitée])
+    E3([End: Échec logué])
+
+    S1 --> R01
+    S2 --> R01
+    S3 --> R12
+    R01 --> R02 --> R03 --> G01
+    G01 -->|FAIL| R15 --> E3
+    G01 -->|OK/PARTIAL| R04 --> R05 --> R06 --> R07 --> G02
+    G02 -->|Oui| R08 --> G03
+    G03 -->|Non| R07
+    G03 -->|Oui| R09
+    G02 -->|Non| R09
+    R09 --> G04 --> G07
+    G07 --> R10
+    G07 --> R11
+    R10 --> R14 --> E1
+    R12 --> G05
+    G05 -->|Non| E2
+    G05 -->|Oui| R13 --> G06
+    G06 -->|Oui ACK| E2
+    G06 -->|Non| R13
+  end

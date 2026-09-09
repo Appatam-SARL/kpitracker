@@ -10,6 +10,7 @@ import {
   DEFAULT_ACTIVITY_SECTORS,
   DEFAULT_CIVILITIES,
   DEFAULT_LEAD_SOURCES,
+  LEAD_TYPE_OPTIONS,
 } from "@/config/lead-options";
 
 interface LeadEditSheetProps {
@@ -31,6 +32,9 @@ const STATUS_OPTIONS = [
 
 export default function LeadEditSheet({ open, lead, onClose, onUpdated, onDeleted }: LeadEditSheetProps) {
   const [status, setStatus] = useState<string>(lead?.status ?? "NEW");
+  const [leadType, setLeadType] = useState<string>(
+    lead?.leadType ?? "NON_DETERMINE",
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,6 +50,8 @@ export default function LeadEditSheet({ open, lead, onClose, onUpdated, onDelete
 
   useEffect(() => {
     if (!open || !lead) return;
+    setStatus(lead.status ?? "NEW");
+    setLeadType(lead.leadType ?? "NON_DETERMINE");
     setSelectedActivityDomains(lead.activityDomains ?? []);
 
     const fetchInterests = async () => {
@@ -137,6 +143,7 @@ export default function LeadEditSheet({ open, lead, onClose, onUpdated, onDelete
           activityDomains: selectedActivityDomains,
           civility: civility || undefined,
           notes: notes || undefined,
+          leadType,
           status,
           productIds: productsTouched ? selectedProductIds : undefined,
           serviceIds: servicesTouched ? selectedServiceIds : undefined,
@@ -246,6 +253,20 @@ export default function LeadEditSheet({ open, lead, onClose, onUpdated, onDelete
                 label="Nom de la compagnie"
                 defaultValue={lead.companyName ?? ""}
               />
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] text-gray-500">Type de client</span>
+                <select
+                  value={leadType}
+                  onChange={(e) => setLeadType(e.target.value)}
+                  className="h-8 rounded-xl border border-gray-200 px-3 text-[11px] bg-gray-50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                >
+                  {LEAD_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <Field
                 name="jobTitle"
                 label="Poste / Fonction"

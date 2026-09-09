@@ -1,0 +1,31 @@
+flowchart TB
+  Start([Start Timer / Demande / Alertes]) --> ST1[Service Task Créer cycle DRAFT]
+  ST1 --> ST2[Service Task Snapshot KPI]
+  ST2 --> AND1[AND fork]
+  AND1 --> UT1[User Task Objectifs COM]
+  AND1 --> UT2[User Task Objectifs OPS]
+  UT1 --> AND2[AND join]
+  UT2 --> AND2
+  AND2 --> XOR1{XOR Objectifs complets?}
+  XOR1 -->|Non| ST3[Service Task + Timer Relance]
+  ST3 --> UT1
+  XOR1 -->|Oui| UT3[User Task Budget Finance]
+  UT3 --> UT4[User Task Décision DG]
+  UT4 --> XOR2{XOR APPROVE / REWORK / DEFER}
+  XOR2 -->|REWORK| UT1
+  XOR2 -->|DEFER| EndC([End CANCELLED])
+  XOR2 -->|APPROVE| ST4[Service Task Geler + publier dashboard]
+  ST4 --> ST5[Service Task Activer alertes SLA]
+  ST5 --> TMR[Timer Snapshot hebdo]
+  TMR --> XOR3{XOR Comité requis?}
+  XOR3 -->|Non| TMR
+  XOR3 -->|Oui| UT5[User Task Comité pilotage]
+  UT5 --> ST6[Service Task CR + ActionPlans]
+  ST6 --> MSG[Send Task Notifications]
+  MSG --> XOR4{XOR Fin de période?}
+  XOR4 -->|Non| TMR
+  XOR4 -->|Oui| UT6[User Task Clôturer / Étendre]
+  UT6 --> XOR5{XOR CLOSE / EXTEND}
+  XOR5 -->|EXTEND| TMR
+  XOR5 -->|CLOSE| ST7[Service Task Archiver]
+  ST7 --> EndOk([End CLOSED])

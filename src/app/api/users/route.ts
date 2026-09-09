@@ -9,6 +9,7 @@ import { logUserAction, USER_ACTION_CODES } from '@/lib/user-action-log';
 import { softDeleteUser, activeOnlyWhere } from '@/lib/trash';
 import { prisma } from '@/lib/prisma';
 import { sendWelcomeEmail } from '@/lib/welcome-email';
+import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
@@ -296,12 +297,24 @@ export async function POST(req: Request) {
       );
     }
 
+    const email = body.email.trim().toLowerCase();
+    const existing = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, deletedAt: true },
+    });
+    if (existing) {
+      const message = existing.deletedAt
+        ? 'Un compte avec cet email existe déjà (utilisateur en corbeille). Restaurez-le ou utilisez un autre email.'
+        : 'Un compte existe déjà avec cet email.';
+      return NextResponse.json({ error: message }, { status: 409 });
+    }
+
     const hashedPassword = await hashPassword(body.password);
 
     const user = await prisma.user.create({
       data: {
         name: body.name,
-        email: body.email,
+        email,
         password: hashedPassword,
         mustChangePassword: true,
         role: body.role,
@@ -335,10 +348,25 @@ export async function POST(req: Request) {
 
     return NextResponse.json(user, { status: 201 });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Données invalides' },
+        { status: 400 },
+      );
+    }
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      return NextResponse.json(
+        { error: 'Un compte existe déjà avec cet email.' },
+        { status: 409 },
+      );
+    }
     console.error('POST /api/users error', error);
     return NextResponse.json(
-      { error: 'Unable to create user' },
-      { status: error instanceof z.ZodError ? 400 : 500 },
+      { error: 'Impossible de créer l\'utilisateur.' },
+      { status: 500 },
     );
   }
 }

@@ -1,4 +1,5 @@
 import { buildLeadsExportBuffer } from '@/lib/lead-import-excel';
+import { formatLeadTypeLabel } from '@/lib/lead-type';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, resolveGroupCompanyScope } from '@/lib/auth';
@@ -57,6 +58,7 @@ export async function GET(req: Request) {
         companyName: true,
         jobTitle: true,
         activitySector: true,
+        leadType: true,
         activityDomains: {
           select: { domain: true },
           orderBy: { domain: 'asc' },
@@ -70,6 +72,7 @@ export async function GET(req: Request) {
     const buffer = await buildLeadsExportBuffer(
       leads.map((lead) => ({
         ...lead,
+        leadType: formatLeadTypeLabel(lead.leadType),
         activityDomains: lead.activityDomains.map((d) => d.domain),
       })),
     );

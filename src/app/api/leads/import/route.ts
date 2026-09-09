@@ -26,6 +26,7 @@ const importRowSchema = z.object({
   /** Alias rétrocompatibilité anciens imports */
   domain: z.string().optional(),
   source: z.string().optional(),
+  leadType: z.string().optional(),
   jobTitle: z.string().optional(),
   location: z.string().optional(),
   observation: z.string().optional(),
@@ -155,6 +156,7 @@ export async function POST(req: Request) {
               location: leadData.location,
               notes: leadData.notes,
               civility: leadData.civility,
+              leadType: leadData.leadType ?? 'NON_DETERMINE',
             },
           });
 
@@ -197,6 +199,7 @@ export async function POST(req: Request) {
             location: leadData.location,
             notes: leadData.notes,
             civility: leadData.civility,
+            leadType: leadData.leadType ?? 'NON_DETERMINE',
             status: 'NEW',
             assignedTo: user.id,
             companyId: effectiveCompanyId,

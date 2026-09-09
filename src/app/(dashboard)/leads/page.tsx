@@ -78,6 +78,7 @@ interface LeadRow {
   location?: string | null;
   activityDomains?: string[];
   activitySector?: string | null;
+  leadType?: string | null;
   civility?: string | null;
   crmCompanyName?: string;
 }
@@ -272,6 +273,7 @@ function LeadsPageInner() {
         location: l.location,
         activityDomains: l.activityDomains ?? [],
         activitySector: l.activitySector ?? null,
+        leadType: l.leadType ?? null,
         civility: l.civility,
         notes: l.notes ?? undefined,
         status: l.status ?? 'NEW',

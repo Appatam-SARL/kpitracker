@@ -1,0 +1,34 @@
+flowchart TB
+  Start([Start: action pointage / timer]) --> Type{XOR: IN / OUT / régul}
+  Type -->|Régularisation| Regul[UT: Regularisation Chef/RH]
+  Regul --> RegulOK{XOR: autorisée?}
+  RegulOK -->|Non| EndRej([End: REJECTED])
+  RegulOK -->|Oui| Save
+  Type -->|IN ou OUT| Capture[UT: Capturer QR/NFC/GPS/photo]
+  Capture --> Method{XOR: méthode autorisée?}
+  Method -->|Non| EndRej
+  Method -->|Oui| Geo[ST: Géofence]
+  Geo --> InFence{XOR: dans zone?}
+  InFence -->|Non| Review[UT: Revue exception]
+  InFence -->|Oui| Fraud[ST: Score anti-fraude]
+  Review --> RevOK{XOR: validé?}
+  RevOK -->|Non| EndRej
+  RevOK -->|Oui| Fraud
+  Fraud --> FraudGW{XOR: fraude?}
+  FraudGW -->|Oui reject| EndRej
+  FraudGW -->|Review| Review
+  FraudGW -->|OK| Save[ST: Enregistrer punch]
+  Save --> IsIn{XOR: check-in?}
+  IsIn -->|Non| Pay
+  IsIn -->|Oui| Late[ST: Calcul retard]
+  Late --> LateGW{XOR: hors grâce?}
+  LateGW -->|Oui| Just[UT: Justifier retard]
+  Just --> ValJust[UT: Valider Chef/RH]
+  LateGW -->|Non| Pay
+  ValJust --> Pay[AND: Timesheet + Notifier]
+  Pay --> EndOK([End: punch validé])
+
+  NoShow[Timer: no-show] --> Replace[MSG: Remplacement]
+  Replace --> EndNS([End: signal 07])
+  Forgot[Timer: oubli check-out] --> Reminder[MSG: Rappel agent]
+  Reminder --> EndPend([End: OUT pending])

@@ -1,0 +1,61 @@
+flowchart TB
+  subgraph AGENCE["Pool: Agence - Facturation"]
+    direction TB
+    T0([Timer: Fin de période])
+    B01[B01 Ouvrir cycle]
+    B02[B02 Snapshot présences]
+    B03[B03 Calcul brouillon]
+    B04[B04 Contrôle écarts Ops]
+    B05[B05 Validation comptable]
+    B06[B06 Validation remise Direction]
+    B07[B07 Émettre facture PDF]
+    B08[B08 Notifier client]
+    B09[B09 Enregistrer paiement]
+    B10[B10 Émettre reçu]
+    B11[B11 Relancer]
+    B12[B12 Traiter contestation]
+    B13[B13 Avoir / complément]
+    B14[B14 Contentieux]
+    B15[B15 Clôturer cycle]
+
+    G01{G01 Écarts > tolérance?}
+    G02{G02 Remise > seuil?}
+    G03{G03 Brouillon OK?}
+    G04{G04 Paiement total?}
+    G05{G05 Contestation?}
+    G06{G06 Avoir / complément / maintien?}
+    G07{G07 Seuil contentieux?}
+
+    E_OK([End: Payée])
+    E_CX([End: Contentieux])
+
+    T0 --> B01 --> B02 --> B03 --> G01
+    G01 -->|Oui| B04 --> B05
+    G01 -->|Non| B05
+    B05 --> G02
+    G02 -->|Oui| B06 --> G03
+    G02 -->|Non| G03
+    G03 -->|Non| B03
+    G03 -->|Oui| B07 --> B08 --> G04
+    G04 -->|Payé| B09 --> B10 --> B15 --> E_OK
+    G04 -->|Partiel/Non| B11 --> G05
+    G05 -->|Oui| B12 --> G06
+    G06 --> B13 --> B07
+    G05 -->|Non| G07
+    G07 -->|Oui| B14 --> E_CX
+    G07 -->|Non| B11
+    B09 -.-> G04
+  end
+
+  subgraph CLIENT["Pool: Client"]
+    C1([Réception facture])
+    C2[Payer / Contester]
+    B08 -.-> C1 --> C2
+    C2 -.-> B09
+    C2 -.-> B12
+  end
+
+  subgraph PSP["Pool: PSP / Banque"]
+    P1([Webhook paiement])
+    C2 -.-> P1 --> B09
+  end

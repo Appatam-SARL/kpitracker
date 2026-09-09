@@ -1,0 +1,35 @@
+flowchart TB
+  Start([Start: fenêtre PDS / scan]) --> Reminder[MSG: Rappel agent]
+  Reminder --> Scan[UT: Scan QR/NFC]
+  Scan --> Geo[ST: Vérifier géofence]
+  Geo --> Auth{XOR: auth + géofence OK?}
+  Auth -->|Non| AlertReject[MSG: Alerte Dispatch]
+  AlertReject --> EndReject([End: REJECTED])
+  Auth -->|Oui| Fraud[ST: Contrôle anti-fraude]
+  Fraud --> FraudOK{XOR: score OK?}
+  FraudOK -->|Non| Review[UT: Revue Chef de site]
+  Review --> Override{XOR: override?}
+  Override -->|Non| EndReject
+  Override -->|Oui| Brief
+  FraudOK -->|Oui| Brief[UT: Brief consignes]
+  Brief --> Sensitive{XOR: site sensible?}
+  Sensitive -->|Oui| Oral[UT/MT: Brief Chef de site]
+  Sensitive -->|Non| Inv
+  Oral --> Inv[UT: Inventaire équipements]
+  Inv --> Ctrl[UT: Contrôle inventaire]
+  Ctrl --> Gaps{XOR: écarts?}
+  Gaps -->|Oui| MatInc[ST: Ouvrir incident matériel]
+  Gaps -->|Non| Relève
+  MatInc --> Relève{XOR: relève?}
+  Relève -->|Oui| Hand[UT: Passation]
+  Relève -->|Non| ClientReq
+  Hand --> ClientReq{XOR: confirm client?}
+  ClientReq -->|Oui| MsgClient[MSG: Demande confirmation]
+  MsgClient --> ClientAck[UT: Accusé client]
+  ClientReq -->|Non| Activate
+  ClientAck --> Activate
+  Activate[AND: Activer service + Notifier]
+  Activate --> EndOK([End: IN_SERVICE])
+
+  NoShow[Timer: non-PDS] --> Replace[MSG: Déclencher remplacement]
+  Replace --> EndNoShow([End: lien processus 07])

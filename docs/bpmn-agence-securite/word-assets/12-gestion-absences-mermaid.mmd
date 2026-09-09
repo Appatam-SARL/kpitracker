@@ -1,0 +1,28 @@
+flowchart TB
+  Start([Start: demande / saisie RH / no-show]) --> Source{XOR: source}
+  Source -->|No-show| Unjust[ST: Créer absence UNJUSTIFIED]
+  Unjust --> Urgent[MSG: Remplacement urgent 07]
+  Urgent --> RhFollow[UT: Suivi RH / disciplinaire]
+  RhFollow --> EndUJ([End: absence injustifiée traitée])
+
+  Source -->|Demande| Create[UT: Déposer demande]
+  Create --> Type{XOR: type absence}
+  Type --> Controls[ST: Contrôles auto soldes/règles]
+  Controls --> CtrlOK{XOR: contrôles OK?}
+  CtrlOK -->|Non| Info[MSG: Demande infos / rejet technique]
+  Info --> EndRej([End: REJECTED / PENDING_DOCS])
+  CtrlOK -->|Oui| OpsAvis[UT: Avis Chef de site]
+  OpsAvis --> Quorum{XOR: quorum menacé?}
+  Quorum -->|Oui| Arbitre[UT: Arbitrage Direction]
+  Quorum -->|Non| RhDec
+  Arbitre --> RhDec[UT: Décision RH]
+  RhDec --> Decision{XOR: approve / reject / info}
+  Decision -->|Reject| EndRej
+  Decision -->|Info| Create
+  Decision -->|Approve| Impact[ST: Calcul impact planning]
+  Impact --> Shifts{XOR: shifts impactés?}
+  Shifts -->|Oui| Parallel[AND: Remplacements + MAJ planning]
+  Shifts -->|Non| Balance
+  Parallel --> Balance[ST: MAJ solde]
+  Balance --> Notifs[AND: Notifier agent / site / paie]
+  Notifs --> EndOK([End: APPROVED])

@@ -260,7 +260,7 @@ export function GoalSetSheet({
                       className="h-8 rounded-xl border border-gray-200 px-3 text-[11px] bg-gray-50 focus:outline-none focus:ring-1 focus:ring-primary/40"
                     >
                       {[1, 2, 3, 4].map((q) => (
-                        <option key={q} value={q}>T{q}</option>
+                        <option key={q} value={q}>Trimestre {q}</option>
                       ))}
                     </select>
                   </label>
@@ -274,8 +274,8 @@ export function GoalSetSheet({
                       onChange={(e) => setSemester(Number(e.target.value))}
                       className="h-8 rounded-xl border border-gray-200 px-3 text-[11px] bg-gray-50 focus:outline-none focus:ring-1 focus:ring-primary/40"
                     >
-                      <option value={1}>S1 (Jan–Juin)</option>
-                      <option value={2}>S2 (Juil–Déc)</option>
+                      <option value={1}>Semestre 1 (Jan–Juin)</option>
+                      <option value={2}>Semestre 2 (Juil–Déc)</option>
                     </select>
                   </label>
                 )}

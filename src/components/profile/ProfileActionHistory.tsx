@@ -50,8 +50,11 @@ const EMPTY_FILTERS: FiltersState = {
 const ACTION_FILTER_OPTIONS: Array<{ code: string; label: string }> = [
   { code: 'AUTH_LOGIN', label: 'Connexion' },
   { code: 'AUTH_LOGOUT', label: 'Déconnexion' },
+  { code: 'AUTH_PASSWORD_CHANGE', label: 'Changement de mot de passe' },
+  { code: 'AUTH_PASSWORD_RESET', label: 'Réinitialisation du mot de passe' },
   { code: 'USER_CREATE', label: 'Création utilisateur' },
   { code: 'USER_UPDATE', label: 'Mise à jour utilisateur' },
+  { code: 'USER_PASSWORD_SET', label: 'Mot de passe défini par un responsable' },
   { code: 'USER_DELETE', label: 'Mise en corbeille utilisateur' },
   { code: 'LEAD_CREATE', label: 'Création prospect' },
   { code: 'LEAD_UPDATE', label: 'Mise à jour prospect' },

@@ -1,0 +1,35 @@
+flowchart TB
+  Start([Start Candidature / RH / Besoin Ops]) --> ST1[Service Task Créer candidature]
+  ST1 --> ST2[Service Task Dédoublonnage CNI/tél]
+  ST2 --> XOR1{XOR Doublon actif?}
+  XOR1 -->|Oui| EndR1([End REJECTED])
+  XOR1 -->|Non| MSG1[Send Task Demande documents]
+  MSG1 --> UT1[User Task Dépôt documents candidat]
+  UT1 --> ST3[Service Task OCR + contrôle dates]
+  ST3 --> XOR2{XOR Docs complets?}
+  XOR2 -->|Non| MSG1
+  XOR2 -->|Oui| UT2[User Task Revue conformité]
+  UT2 --> XOR3{XOR Compliance}
+  XOR3 -->|MORE_INFO| UT1
+  XOR3 -->|REJECT| EndR2([End REJECTED])
+  XOR3 -->|APPROVE| MT1[Manual Task Vérification externe]
+  MT1 --> AND1[AND Entretien // Avis Ops]
+  AND1 --> UT3[User Task Entretien RH]
+  AND1 --> UT4[User Task Avis Ops]
+  UT3 --> AND2[AND join]
+  UT4 --> AND2
+  AND2 --> XOR4{XOR Décision embauche}
+  XOR4 -->|WAITLIST| EndW([End WAITLIST])
+  XOR4 -->|REJECT| EndR3([End REJECTED])
+  XOR4 -->|HIRE| UT5[User Task Contrat de travail]
+  UT5 --> UT6[User Task Formation initiale]
+  UT6 --> ST4[Service Task Score formation]
+  ST4 --> XOR5{XOR Formation OK?}
+  XOR5 -->|Non| XOR6{XOR Rattrapage possible?}
+  XOR6 -->|Oui| UT6
+  XOR6 -->|Non| EndR4([End REJECTED onboarding])
+  XOR5 -->|Oui| ST5[Service Task Attribuer matricule]
+  ST5 --> ST6[Service Task Créer compte agent]
+  ST6 --> MSG2[Send Task Identifiants WhatsApp/SMS]
+  MSG2 --> UT7[User Task 1ère connexion + CGU]
+  UT7 --> EndA([End ACTIVE_AVAILABLE])

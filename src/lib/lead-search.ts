@@ -6,6 +6,7 @@ export const LEAD_SEARCH_FIELDS = [
   { id: 'companyName', label: "Nom de l'entreprise" },
   { id: 'jobTitle', label: 'Poste / fonction' },
   { id: 'activitySector', label: "Secteur d'activités" },
+  { id: 'leadType', label: 'Type de client' },
   { id: 'activityDomains', label: "Domaines d'activités" },
   { id: 'location', label: 'Situation géographique' },
   { id: 'source', label: 'Source' },
@@ -33,6 +34,7 @@ export type LeadSearchable = {
   jobTitle?: string | null;
   activitySector?: string | null;
   activityDomains?: string[] | null;
+  leadType?: string | null;
   location?: string | null;
   source?: string | null;
   civility?: string | null;
@@ -56,6 +58,8 @@ function fieldValue(lead: LeadSearchable, field: LeadSearchFieldId): string {
       return lead.jobTitle ?? '';
     case 'activitySector':
       return lead.activitySector ?? '';
+    case 'leadType':
+      return lead.leadType ?? '';
     case 'activityDomains':
       return (lead.activityDomains ?? []).join(' ');
     case 'location':

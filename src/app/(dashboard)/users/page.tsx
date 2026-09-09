@@ -9,6 +9,7 @@ import {
 import UserCreateSheet from '@/components/UserCreateSheet';
 import UserRoleBadge from '@/components/UserRoleBadge';
 import { UserEditSheet } from '@/components/UserEditSheet';
+import { UserPasswordSheet } from '@/components/UserPasswordSheet';
 import type { FrontendRole } from '@/contexts/AuthContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGroupCompanyScope } from '@/hooks/useGroupCompanyScope';
@@ -16,6 +17,7 @@ import {
   USER_ROLE_FILTER_OPTIONS,
   canManageUserAccounts,
   canSetAgentGoal,
+  canSetTeamMemberPassword,
   canTrashUserAccounts,
   frontendRoleToApi,
   hasGroupCompanyScopeFrontend,
@@ -75,6 +77,7 @@ function UsersPageInner() {
   const [roleFilter, setRoleFilter] = useState<FrontendRole | 'all'>('all');
   const [createOpen, setCreateOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
+  const [passwordUser, setPasswordUser] = useState<UserRow | null>(null);
   const [goalUser, setGoalUser] = useState<UserRow | null>(null);
   const [goalSheetMode, setGoalSheetMode] = useState<'create' | 'edit'>('create');
   const [existingGoalForSheet, setExistingGoalForSheet] =
@@ -446,6 +449,20 @@ function UsersPageInner() {
                                 Modifier
                               </DropdownMenuItem>
                             )}
+                            {canSetTeamMemberPassword(
+                              authUser.role,
+                              authUser.id,
+                              user,
+                            ) && (
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault();
+                                  setPasswordUser(user);
+                                }}
+                              >
+                                Modifier le mot de passe
+                              </DropdownMenuItem>
+                            )}
                             {canTrashUserAccounts(authUser.role) &&
                               user.id !== authUser.id &&
                               user.role !== 'admin' && (
@@ -523,6 +540,11 @@ function UsersPageInner() {
             prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)),
           )
         }
+      />
+      <UserPasswordSheet
+        open={passwordUser !== null}
+        user={passwordUser}
+        onOpenChange={(open) => !open && setPasswordUser(null)}
       />
       <GoalSetSheet
         open={goalUser !== null}

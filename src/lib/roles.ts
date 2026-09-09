@@ -81,6 +81,18 @@ export function canManageUserAccounts(
   return role === "admin" || role === "manager";
 }
 
+/** DG / admin : définir le mot de passe d'un membre de l'équipe (y compris un autre DG). */
+export function canSetTeamMemberPassword(
+  actorRole: FrontendRole | null | undefined,
+  actorId: string | null | undefined,
+  target: { id: string; role: FrontendRole },
+): boolean {
+  if (!canManageUserAccounts(actorRole) || !actorId) return false;
+  if (target.id === actorId) return false;
+  if (actorRole === "manager" && target.role === "admin") return false;
+  return true;
+}
+
 /** Mise en corbeille d'un utilisateur : managers/admins + rôles périmètre groupe. */
 export function canTrashUserAccounts(
   role: FrontendRole | null | undefined,
