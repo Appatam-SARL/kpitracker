@@ -3,6 +3,7 @@
 import GroupCompanySelect from "@/components/GroupCompanySelect";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardOnboardingCarousel from "@/components/dashboard/DashboardOnboardingCarousel";
+import DashboardAgendaToday from "@/components/dashboard/DashboardAgendaToday";
 import DashboardShell from "@/components/layouts/DashboardShell";
 import NeumoCard from "@/components/NeumoCard";
 import SkeletonLoader from "@/components/SkeletonLoader";
@@ -118,6 +119,7 @@ export default function DashboardPage() {
   const [teamGoals, setTeamGoals] = useState<CurrentGoal[]>([]);
   const [goalsLoading, setGoalsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const isManagerLike = isAdminOrManagerLike(authUser?.role);
 
@@ -218,6 +220,7 @@ export default function DashboardPage() {
   const handleManualRefresh = async () => {
     setRefreshing(true);
     await refreshDashboard();
+    setRefreshKey((k) => k + 1);
     window.dispatchEvent(new Event(GOALS_INVALIDATE_EVENT));
     setRefreshing(false);
   };
@@ -254,7 +257,8 @@ export default function DashboardPage() {
       <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-xs text-gray-500">
-            Indicateurs clés, répartition pipeline et derniers prospects.
+            Indicateurs clés, agenda du jour, répartition pipeline et derniers
+            prospects.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -333,6 +337,15 @@ export default function DashboardPage() {
             <p className="text-[10px] text-gray-400">Ventes conclues</p>
           </div>
         </NeumoCard>
+      </section>
+
+      {/* Agenda du jour — tâches par commerciale */}
+      <section>
+        <DashboardAgendaToday
+          companyId={apiCompanyId}
+          groupByAgent={isManagerLike}
+          refreshKey={refreshKey}
+        />
       </section>
 
       {/* Objectifs */}

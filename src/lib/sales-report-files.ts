@@ -12,6 +12,8 @@ import {
   WidthType,
 } from 'docx';
 import ExcelJS from 'exceljs';
+import { existsSync } from 'fs';
+import path from 'path';
 import PDFDocument from 'pdfkit';
 
 export type SalesReportMeta = {
@@ -25,14 +27,36 @@ export type SalesReportMeta = {
 };
 
 function formatMoney(value: number): string {
-  const formatted = Math.round(value).toLocaleString('fr-FR');
+  // PDFKit/Helvetica ne rend pas bien U+202F / NBSP de toLocaleString('fr-FR')
+  const formatted = Math.round(value)
+    .toLocaleString('fr-FR')
+    .replace(/[\u202f\u00a0]/g, ' ');
   return `${formatted} FCFA`;
+}
+
+/** Montant compact pour colonnes étroites (unité dans l’en-tête). */
+function formatMoneyAmount(value: number): string {
+  return Math.round(value)
+    .toLocaleString('fr-FR')
+    .replace(/[\u202f\u00a0]/g, ' ');
 }
 
 const BLUE = 'FF2F75B6';
 const RED = 'FFC00000';
 const GREEN = 'FF548235';
 const LIGHT = 'FFF2F2F2';
+
+const PDF = {
+  primary: '#111111',
+  muted: '#6B7280',
+  line: '#E5E7EB',
+  soft: '#F4F4F4',
+  card: '#F8F8F8',
+  blue: '#2F75B6',
+  red: '#C00000',
+  green: '#548235',
+  white: '#FFFFFF',
+};
 
 function cockpitOf(payload: SalesSummaryReport) {
   if (payload.cockpit) return payload.cockpit;
@@ -53,6 +77,222 @@ function formatDateLabel(isoDate: string): string {
   const d = new Date(isoDate.includes('T') ? isoDate : `${isoDate}T00:00:00`);
   if (Number.isNaN(d.getTime())) return isoDate;
   return d.toLocaleDateString('fr-FR');
+}
+
+function resolveLogoPath(): string | null {
+  const candidates = [
+    path.join(process.cwd(), 'public', 'kpitracker-logo.png'),
+    path.join(process.cwd(), 'public', 'kpitracker-mark.png'),
+  ];
+  return candidates.find((file) => existsSync(file)) ?? null;
+}
+
+function drawRoundedRect(
+  doc: InstanceType<typeof PDFDocument>,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+  fill: string,
+  stroke?: string,
+) {
+  doc.save();
+  doc.roundedRect(x, y, w, h, r);
+  if (fill) doc.fillColor(fill).fill();
+  if (stroke) {
+    doc.roundedRect(x, y, w, h, r);
+    doc.strokeColor(stroke).lineWidth(0.8).stroke();
+  }
+  doc.restore();
+}
+
+function ensureSpace(doc: InstanceType<typeof PDFDocument>, needed: number) {
+  const bottom = doc.page.height - doc.page.margins.bottom;
+  if (doc.y + needed > bottom) {
+    doc.addPage();
+  }
+}
+
+function drawSectionTitle(doc: InstanceType<typeof PDFDocument>, title: string) {
+  ensureSpace(doc, 36);
+  const y = doc.y;
+  doc
+    .save()
+    .rect(doc.page.margins.left, y, 3, 14)
+    .fill(PDF.primary);
+  doc.restore();
+  doc
+    .fillColor(PDF.primary)
+    .font('Helvetica-Bold')
+    .fontSize(12)
+    .text(title, doc.page.margins.left + 10, y - 1);
+  doc.moveDown(0.8);
+}
+
+function drawKpiCard(
+  doc: InstanceType<typeof PDFDocument>,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  label: string,
+  value: string,
+  tone: 'neutral' | 'bad' | 'good' = 'neutral',
+) {
+  const accent =
+    tone === 'bad' ? PDF.red : tone === 'good' ? PDF.green : PDF.blue;
+  drawRoundedRect(doc, x, y, w, h, 8, PDF.card, PDF.line);
+  doc
+    .save()
+    .rect(x, y, 4, h)
+    .fill(accent);
+  doc.restore();
+  doc
+    .fillColor(PDF.muted)
+    .font('Helvetica')
+    .fontSize(8)
+    .text(label, x + 12, y + 10, { width: w - 20 });
+  doc
+    .fillColor(tone === 'bad' ? PDF.red : PDF.primary)
+    .font('Helvetica-Bold')
+    .fontSize(11)
+    .text(value, x + 12, y + 26, { width: w - 20 });
+}
+
+function drawProgressBar(
+  doc: InstanceType<typeof PDFDocument>,
+  x: number,
+  y: number,
+  w: number,
+  rate: number,
+) {
+  const clamped = Math.max(0, Math.min(100, rate));
+  drawRoundedRect(doc, x, y, w, 8, 4, PDF.line);
+  const fillW = Math.max(4, (w * clamped) / 100);
+  drawRoundedRect(
+    doc,
+    x,
+    y,
+    fillW,
+    8,
+    4,
+    clamped >= 100 ? PDF.green : clamped >= 50 ? PDF.blue : PDF.red,
+  );
+}
+
+type PdfTableCol = {
+  label: string;
+  width: number;
+  align?: 'left' | 'right';
+  /** Autorise le retour à la ligne (ex. prestations longues). */
+  wrap?: boolean;
+};
+
+function measureCellHeight(
+  doc: InstanceType<typeof PDFDocument>,
+  text: string,
+  width: number,
+  fontSize: number,
+  wrap: boolean,
+): number {
+  const padY = 8;
+  const minH = fontSize + padY;
+  if (!wrap || !text) return minH;
+  doc.font('Helvetica').fontSize(fontSize);
+  const h = doc.heightOfString(text, {
+    width: Math.max(8, width - 8),
+    align: 'left',
+  });
+  return Math.max(minH, h + padY);
+}
+
+function drawTable(
+  doc: InstanceType<typeof PDFDocument>,
+  columns: PdfTableCol[],
+  rows: string[][],
+) {
+  const startX = doc.page.margins.left;
+  const headerH = 22;
+  const fontSize = 7.5;
+  const tableW = columns.reduce((s, c) => s + c.width, 0);
+  const pageBottom = () => doc.page.height - doc.page.margins.bottom;
+
+  const drawHeader = () => {
+    let x = startX;
+    const y = doc.y;
+    drawRoundedRect(doc, startX, y, tableW, headerH, 4, PDF.primary);
+    columns.forEach((col) => {
+      doc
+        .fillColor(PDF.white)
+        .font('Helvetica-Bold')
+        .fontSize(fontSize)
+        .text(col.label, x + 4, y + 7, {
+          width: col.width - 8,
+          align: col.align ?? 'left',
+          lineBreak: false,
+          ellipsis: true,
+        });
+      x += col.width;
+    });
+    doc.y = y + headerH + 2;
+  };
+
+  drawHeader();
+
+  rows.forEach((row, index) => {
+    const isTotal = index === rows.length - 1 && (row[0] ?? '').startsWith('Total');
+    const heights = columns.map((col, i) =>
+      measureCellHeight(
+        doc,
+        row[i] ?? '',
+        col.width,
+        fontSize,
+        Boolean(col.wrap) && !isTotal,
+      ),
+    );
+    const rowH = Math.max(18, ...heights);
+
+    if (doc.y + rowH > pageBottom()) {
+      doc.addPage();
+      drawHeader();
+    }
+
+    const y = doc.y;
+    if (index % 2 === 0 || isTotal) {
+      drawRoundedRect(
+        doc,
+        startX,
+        y,
+        tableW,
+        rowH,
+        0,
+        isTotal ? '#E8E8E8' : PDF.soft,
+      );
+    }
+
+    let x = startX;
+    columns.forEach((col, colIndex) => {
+      const cell = row[colIndex] ?? '';
+      const wrap = Boolean(col.wrap) && !isTotal;
+      doc
+        .fillColor(PDF.primary)
+        .font(isTotal ? 'Helvetica-Bold' : 'Helvetica')
+        .fontSize(fontSize)
+        .text(cell, x + 4, y + 4, {
+          width: col.width - 8,
+          align: col.align ?? 'left',
+          lineBreak: wrap,
+          ellipsis: !wrap,
+          height: wrap ? rowH - 6 : undefined,
+        });
+      // PDFKit avance y après un texte multiligne : on fige la ligne
+      doc.y = y;
+      x += col.width;
+    });
+    doc.y = y + rowH;
+  });
+  doc.moveDown(0.8);
 }
 
 function paintLabel(cell: ExcelJS.Cell, text: string) {
@@ -275,96 +515,320 @@ export async function buildSalesReportPdfBuffer(
   meta: SalesReportMeta,
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const doc = new PDFDocument({
+      margin: 42,
+      size: 'A4',
+      bufferPages: true,
+      info: {
+        Title: meta.title,
+        Author: 'KpiTracker',
+        Creator: 'KpiTracker by Appatam',
+      },
+    });
+    // Marge basse élargie pour le pied de page
+    doc.page.margins.bottom = 48;
     const chunks: Buffer[] = [];
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    doc.fontSize(18).text(meta.title, { align: 'left' });
-    doc.moveDown(0.5);
-    doc.fontSize(10).fillColor('#555555');
-    doc.text(
-      `Période : ${formatDateLabel(meta.periodFrom)} → ${formatDateLabel(meta.periodTo)}`,
-    );
-    if (meta.scopeLabel) doc.text(`Périmètre : ${meta.scopeLabel}`);
-    if (meta.agentName) doc.text(`Commercial : ${meta.agentName}`);
-    if (meta.source) doc.text(`Source : ${meta.source}`);
-    doc.moveDown();
-
+    const pageW = doc.page.width;
+    const left = doc.page.margins.left;
+    const right = doc.page.margins.right;
+    const contentW = pageW - left - right;
     const cockpit = cockpitOf(payload);
-    doc.fillColor('#2F75B6').fontSize(12).text('OBJ CA');
-    doc.fillColor('#111111').fontSize(12).text(formatMoney(cockpit.objectiveRevenue));
-    doc.fillColor('#2F75B6').text('TOTAL CA RÉALISÉ');
-    doc.fillColor('#111111').text(formatMoney(cockpit.realizedRevenue));
-    doc.fillColor('#2F75B6').text('Reste');
-    doc.fillColor(cockpit.remainder < 0 ? '#C00000' : '#548235').text(
-      formatMoney(cockpit.remainder),
-    );
-    doc.fillColor('#111111').text(
-      `Nbre de ventes conclues : ${cockpit.concludedSalesCount}`,
-    );
-    doc.moveDown(0.4);
-    doc.fontSize(10).fillColor('#555555');
-    doc.text(`Statut négociation : ${cockpit.negotiationFilter}`);
-    doc.text(`Conclu le : ${cockpit.concludedOnLabel}`);
-    doc.text(`Taux d’atteinte : ${cockpit.attainmentRate.toFixed(1)} %`);
-    doc.text(`Pipeline (montant offres) : ${formatMoney(cockpit.pipelineAmount)}`);
-    doc.moveDown();
+    const logoPath = resolveLogoPath();
+    const generatedAt = new Date().toLocaleString('fr-FR');
 
-    doc.fillColor('#111111').fontSize(13).text('Détail par entreprise');
-    doc.moveDown(0.3);
-    doc.fontSize(9);
-    if (cockpit.lines.length === 0) {
-      doc.text('Aucune offre ni vente sur cette période.');
-    } else {
-      for (const line of cockpit.lines) {
-        doc.text(
-          `${line.prospectName} — ${line.prestations} · Offres ${formatMoney(line.offerAmount)} · CA ${formatMoney(line.realizedAmount)} · ${line.salesCount} vente(s) · ${line.stageLabel} · ${line.commercialName}`,
-        );
+    // —— En-tête ——
+    drawRoundedRect(doc, left, 36, contentW, 72, 10, PDF.soft, PDF.line);
+    if (logoPath) {
+      try {
+        doc.image(logoPath, left + 14, 48, { fit: [130, 44] });
+      } catch {
+        doc
+          .fillColor(PDF.primary)
+          .font('Helvetica-Bold')
+          .fontSize(14)
+          .text('KpiTracker', left + 16, 58);
       }
+    } else {
+      doc
+        .fillColor(PDF.primary)
+        .font('Helvetica-Bold')
+        .fontSize(14)
+        .text('KpiTracker', left + 16, 58);
     }
-    doc.moveDown();
-    doc.fontSize(11).text(
+
+    doc
+      .fillColor(PDF.primary)
+      .font('Helvetica-Bold')
+      .fontSize(16)
+      .text(meta.title, left + 150, 48, {
+        width: contentW - 170,
+        align: 'right',
+      });
+    doc
+      .fillColor(PDF.muted)
+      .font('Helvetica')
+      .fontSize(9)
+      .text(
+        `Période : ${formatDateLabel(meta.periodFrom)} → ${formatDateLabel(meta.periodTo)}`,
+        left + 150,
+        70,
+        { width: contentW - 170, align: 'right' },
+      );
+    doc.text(
+      [
+        meta.scopeLabel ? `Périmètre : ${meta.scopeLabel}` : null,
+        meta.agentName ? `Commercial : ${meta.agentName}` : null,
+        meta.source ? `Source : ${meta.source}` : null,
+      ]
+        .filter(Boolean)
+        .join('  ·  ') || 'Rapport de pilotage commercial',
+      left + 150,
+      84,
+      { width: contentW - 170, align: 'right' },
+    );
+
+    doc.y = 122;
+
+    // —— Cartes KPI ——
+    const cardH = 52;
+    const gap = 8;
+    const cardW = (contentW - gap * 3) / 4;
+    const kpiY = doc.y;
+    drawKpiCard(
+      doc,
+      left,
+      kpiY,
+      cardW,
+      cardH,
+      'OBJ CA',
+      formatMoney(cockpit.objectiveRevenue),
+    );
+    drawKpiCard(
+      doc,
+      left + cardW + gap,
+      kpiY,
+      cardW,
+      cardH,
+      'TOTAL CA RÉALISÉ',
+      formatMoney(cockpit.realizedRevenue),
+    );
+    drawKpiCard(
+      doc,
+      left + (cardW + gap) * 2,
+      kpiY,
+      cardW,
+      cardH,
+      'Reste',
+      formatMoney(cockpit.remainder),
+      cockpit.remainder < 0 ? 'bad' : 'good',
+    );
+    drawKpiCard(
+      doc,
+      left + (cardW + gap) * 3,
+      kpiY,
+      cardW,
+      cardH,
+      'Ventes conclues',
+      String(cockpit.concludedSalesCount),
+      cockpit.concludedSalesCount === 0 ? 'bad' : 'good',
+    );
+    doc.y = kpiY + cardH + 14;
+
+    // —— Bandeau synthèse ——
+    ensureSpace(doc, 70);
+    const bandY = doc.y;
+    drawRoundedRect(doc, left, bandY, contentW, 58, 8, PDF.white, PDF.line);
+    doc
+      .fillColor(PDF.muted)
+      .font('Helvetica')
+      .fontSize(8)
+      .text('Taux d’atteinte', left + 14, bandY + 10);
+    doc
+      .fillColor(PDF.primary)
+      .font('Helvetica-Bold')
+      .fontSize(14)
+      .text(`${cockpit.attainmentRate.toFixed(1)} %`, left + 14, bandY + 24);
+    drawProgressBar(
+      doc,
+      left + 14,
+      bandY + 44,
+      contentW * 0.38,
+      cockpit.attainmentRate,
+    );
+
+    doc
+      .fillColor(PDF.muted)
+      .font('Helvetica')
+      .fontSize(8)
+      .text('Pipeline (montant offres)', left + contentW * 0.48, bandY + 10);
+    doc
+      .fillColor(PDF.primary)
+      .font('Helvetica-Bold')
+      .fontSize(11)
+      .text(formatMoney(cockpit.pipelineAmount), left + contentW * 0.48, bandY + 24);
+
+    doc
+      .fillColor(PDF.muted)
+      .font('Helvetica')
+      .fontSize(8)
+      .text(
+        `Statut : ${cockpit.negotiationFilter}  ·  Conclu le : ${cockpit.concludedOnLabel}`,
+        left + contentW * 0.48,
+        bandY + 42,
+        { width: contentW * 0.48 },
+      );
+    doc.y = bandY + 70;
+
+    // —— Message objectif ——
+    ensureSpace(doc, 36);
+    const msg =
       cockpit.remainder < 0
         ? `Objectif non atteint : ${formatMoney(Math.abs(cockpit.remainder))} encore à réaliser.`
         : cockpit.objectiveRevenue > 0
           ? 'Objectif de CA atteint ou dépassé.'
-          : 'Aucun objectif CA sur cette période.',
+          : 'Aucun objectif CA sur cette période.';
+    drawRoundedRect(
+      doc,
+      left,
+      doc.y,
+      contentW,
+      28,
+      6,
+      cockpit.remainder < 0 ? '#FEF2F2' : '#ECFDF5',
+      cockpit.remainder < 0 ? '#FECACA' : '#A7F3D0',
     );
-    doc.moveDown();
+    doc
+      .fillColor(cockpit.remainder < 0 ? PDF.red : PDF.green)
+      .font('Helvetica-Bold')
+      .fontSize(9)
+      .text(msg, left + 12, doc.y + 9, { width: contentW - 24 });
+    doc.y += 40;
 
-    doc.fontSize(13).text('Par commercial');
-    doc.moveDown(0.3);
-    doc.fontSize(10);
+    // —— Détail entreprises ——
+    drawSectionTitle(doc, 'Détail par entreprise');
+    if (cockpit.lines.length === 0) {
+      doc
+        .fillColor(PDF.muted)
+        .font('Helvetica')
+        .fontSize(9)
+        .text('Aucune offre ni vente sur cette période.');
+      doc.moveDown();
+    } else {
+      // Largeurs pensées pour A4 : prestations en wrap, montants lisibles
+      const cols: PdfTableCol[] = [
+        { label: 'Entreprise', width: contentW * 0.16, wrap: true },
+        { label: 'Prestations', width: contentW * 0.28, wrap: true },
+        { label: 'Commerciale', width: contentW * 0.13, wrap: true },
+        { label: 'Stade', width: contentW * 0.1 },
+        { label: 'Offres (FCFA)', width: contentW * 0.14, align: 'right' },
+        { label: 'CA (FCFA)', width: contentW * 0.12, align: 'right' },
+        { label: 'Ventes', width: contentW * 0.07, align: 'right' },
+      ];
+      const rows = cockpit.lines.map((line) => [
+        line.prospectName,
+        line.prestations,
+        line.commercialName,
+        line.stageLabel,
+        formatMoneyAmount(line.offerAmount),
+        formatMoneyAmount(line.realizedAmount),
+        String(line.salesCount),
+      ]);
+      const offerTotal = cockpit.lines.reduce((s, l) => s + l.offerAmount, 0);
+      const realizedTotal = cockpit.lines.reduce(
+        (s, l) => s + l.realizedAmount,
+        0,
+      );
+      const salesTotal = cockpit.lines.reduce((s, l) => s + l.salesCount, 0);
+      rows.push([
+        'Total général',
+        '',
+        '',
+        '',
+        formatMoneyAmount(offerTotal),
+        formatMoneyAmount(realizedTotal),
+        String(salesTotal),
+      ]);
+      drawTable(doc, cols, rows);
+    }
+
+    // —— Par commercial ——
+    drawSectionTitle(doc, 'Par commercial');
     if (payload.byUser.length === 0) {
-      doc.text('Aucune donnée.');
+      doc.fillColor(PDF.muted).font('Helvetica').fontSize(9).text('Aucune donnée.');
+      doc.moveDown();
     } else {
-      for (const row of payload.byUser) {
-        doc.text(
-          `${row.userName} — Leads ${row.nbLeads} · Clients ${row.nbClients} · CA ${formatMoney(row.caTotal)} · ${row.conversionRate.toFixed(1)} %`,
-        );
-      }
+      drawTable(
+        doc,
+        [
+          { label: 'Commercial', width: contentW * 0.34 },
+          { label: 'Leads', width: contentW * 0.14, align: 'right' },
+          { label: 'Clients', width: contentW * 0.14, align: 'right' },
+          { label: 'CA', width: contentW * 0.24, align: 'right' },
+          { label: 'Taux', width: contentW * 0.14, align: 'right' },
+        ],
+        payload.byUser.map((row) => [
+          row.userName,
+          String(row.nbLeads),
+          String(row.nbClients),
+          formatMoney(row.caTotal),
+          `${row.conversionRate.toFixed(1)} %`,
+        ]),
+      );
     }
-    doc.moveDown();
 
-    doc.fontSize(13).text('Par source');
-    doc.moveDown(0.3);
-    doc.fontSize(10);
+    // —— Par source ——
+    drawSectionTitle(doc, 'Par source');
     if (payload.bySource.length === 0) {
-      doc.text('Aucune donnée.');
+      doc.fillColor(PDF.muted).font('Helvetica').fontSize(9).text('Aucune donnée.');
+      doc.moveDown();
     } else {
-      for (const row of payload.bySource) {
-        doc.text(
-          `${row.source ?? 'Inconnu'} — Leads ${row.nbLeads} · Clients ${row.nbClients}`,
-        );
-      }
+      drawTable(
+        doc,
+        [
+          { label: 'Source', width: contentW * 0.5 },
+          { label: 'Leads', width: contentW * 0.25, align: 'right' },
+          { label: 'Clients', width: contentW * 0.25, align: 'right' },
+        ],
+        payload.bySource.map((row) => [
+          row.source ?? 'Inconnu',
+          String(row.nbLeads),
+          String(row.nbClients),
+        ]),
+      );
     }
 
-    doc.moveDown(2);
-    doc.fontSize(8).fillColor('#888888').text('Généré par KpiTracker', {
-      align: 'center',
-    });
+    // Footers on all pages (buffer pages)
+    const range = doc.bufferedPageRange();
+    for (let i = 0; i < range.count; i += 1) {
+      doc.switchToPage(i);
+      const y = doc.page.height - 32;
+      doc
+        .save()
+        .moveTo(left, y - 8)
+        .lineTo(pageW - right, y - 8)
+        .strokeColor(PDF.line)
+        .lineWidth(0.6)
+        .stroke();
+      doc.restore();
+      doc
+        .fillColor(PDF.muted)
+        .font('Helvetica')
+        .fontSize(7.5)
+        .text('KpiTracker · CRM commercial · Appatam', left, y, {
+          width: contentW / 2,
+          align: 'left',
+          lineBreak: false,
+        });
+      doc.text(`Page ${i + 1} / ${range.count} · ${generatedAt}`, left, y, {
+        width: contentW,
+        align: 'right',
+        lineBreak: false,
+      });
+    }
 
     doc.end();
   });
