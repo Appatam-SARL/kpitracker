@@ -33,6 +33,10 @@ export interface Activity {
 
 interface InteractionHistoryProps {
   lead: Lead | null;
+  /** Id entreprise prospectée (sinon lead.id). */
+  prospectId?: string;
+  /** Contact concerné par l'activité. */
+  contactId?: string;
   /** Liste d'activités contrôlée par le parent (ex: lead.activities). Si fournie, aucune requête GET /api/activities n'est faite. */
   activities?: Activity[];
   onActivityAdded?: (activity: Activity) => void;
@@ -46,12 +50,15 @@ interface InteractionHistoryProps {
 
 export default function InteractionHistory({
   lead,
+  prospectId,
+  contactId,
   activities: activitiesProp,
   onActivityAdded,
   filterType,
   title,
   initialType,
 }: InteractionHistoryProps) {
+  const entityProspectId = prospectId || lead?.id;
   const [activities, setActivities] = useState<Activity[]>(activitiesProp ?? []);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -78,18 +85,20 @@ export default function InteractionHistory({
 
   // Mode non contrôlé : fallback sur l'API historique /api/activities
   useEffect(() => {
-    if (!lead?.id || activitiesProp) return;
+    if (!entityProspectId || activitiesProp) return;
     setLoading(true);
-    fetch(`/api/activities?leadId=${encodeURIComponent(lead.id)}`)
+    const qs = new URLSearchParams({ leadId: entityProspectId });
+    if (contactId) qs.set('contactId', contactId);
+    fetch(`/api/activities?${qs.toString()}`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => setActivities(data))
       .catch(() => setActivities([]))
       .finally(() => setLoading(false));
-  }, [lead?.id, activitiesProp]);
+  }, [entityProspectId, contactId, activitiesProp]);
 
   const handleAdd = async (e: FormEvent) => {
     e.preventDefault();
-    if (!lead?.id || !formContent.trim()) return;
+    if (!entityProspectId || !formContent.trim()) return;
     if (formType === "CALL" && !callDate) {
       setError("Merci de renseigner la date de l'appel.");
       return;
@@ -101,7 +110,8 @@ export default function InteractionHistory({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          leadId: lead.id,
+          leadId: entityProspectId,
+          contactId: contactId || undefined,
           type: formType,
           content: formContent.trim(),
           date: formType === "CALL" && callDate ? callDate : undefined,

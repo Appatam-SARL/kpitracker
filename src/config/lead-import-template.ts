@@ -1,4 +1,4 @@
-/** Modèle Excel d'import des prospects (13 colonnes, ordre A→M). */
+/** Modèle Excel d'import des prospects (14 colonnes, ordre A→N). */
 
 export type LeadImportField =
   | 'civility'
@@ -13,6 +13,7 @@ export type LeadImportField =
   | 'activityDomain'
   | 'source'
   | 'location'
+  | 'geographicSituation'
   | 'observation';
 
 export type LeadImportRow = {
@@ -28,6 +29,7 @@ export type LeadImportRow = {
   activityDomain?: string;
   source?: string;
   location?: string;
+  geographicSituation?: string;
   observation?: string;
 };
 
@@ -43,6 +45,7 @@ export const LEAD_IMPORT_HEADERS = [
   "Secteur d'activités",
   "Domaine d'activités",
   'Source',
+  'Quartier, Commune, Ville, Pays',
   'Situation géographique',
   'Observation',
 ] as const;
@@ -56,18 +59,19 @@ export const LEAD_IMPORT_EXAMPLE_ROW: string[] = [
   'Acme Corp',
   'Entreprise Privée (B2B)',
   'Directeur commercial',
-  'Information et communication',
-  'Informatique et télécommunication, Santé',
+  'J - Information et communication',
+  'J62 - Programmation, conseil et activités informatiques',
   '',
-  'Abidjan, Cocody',
+  'Angré 7e tranche, Cocody, Abidjan, Côte d\'Ivoire',
+  'https://maps.app.goo.gl/exemple',
   'Client rencontré au salon X',
 ];
 
 export const LEAD_IMPORT_HEADERS_HELP = LEAD_IMPORT_HEADERS.join(', ');
 
-/** Largeurs des colonnes A→M (alignées import / export). */
+/** Largeurs des colonnes A→N (alignées import / export). */
 export const LEAD_IMPORT_COLUMN_WIDTHS = [
-  12, 14, 14, 18, 26, 22, 28, 20, 22, 24, 18, 22, 28,
+  12, 14, 14, 18, 26, 22, 28, 20, 22, 24, 18, 36, 36, 28,
 ] as const;
 
 /** Enregistrement lead pour export Excel (même disposition que l'import). */
@@ -84,6 +88,7 @@ export type LeadExportRecord = {
   activityDomains?: string[] | null;
   source?: string | null;
   location?: string | null;
+  geographicSituation?: string | null;
   notes?: string | null;
 };
 
@@ -102,6 +107,7 @@ export function mapLeadToImportExcelRow(lead: LeadExportRecord): string[] {
     (lead.activityDomains ?? []).join(', '),
     lead.source ?? '',
     lead.location ?? '',
+    lead.geographicSituation ?? '',
     lead.notes ?? '',
   ];
 }
@@ -205,8 +211,13 @@ export function mapHeaderToField(normalized: string): LeadImportField | undefine
     return 'source';
   }
 
+  if (normalized.includes('situationgeographique')) {
+    return 'geographicSituation';
+  }
+
   if (
-    normalized.includes('situationgeographique') ||
+    normalized.includes('quartier') ||
+    normalized.includes('communeville') ||
     normalized.includes('localisation') ||
     normalized.includes('lieu') ||
     normalized.includes('adresse')
@@ -219,6 +230,38 @@ export function mapHeaderToField(normalized: string): LeadImportField | undefine
   }
 
   return undefined;
+}
+
+/** Lien de situation géographique (Maps) plutôt qu'une adresse textuelle. */
+export function looksLikeGeographicUrl(value: string | null | undefined): boolean {
+  const trimmed = value?.trim().toLowerCase() ?? '';
+  if (!trimmed) return false;
+  return (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.includes('maps.')
+  );
+}
+
+/**
+ * Anciens fichiers n'avaient que « Situation géographique » pour l'adresse.
+ * Un texte non-URL reste donc une localisation.
+ */
+export function resolveImportedLocationFields(row: {
+  location?: string;
+  geographicSituation?: string;
+}): { location: string | null; geographicSituation: string | null } {
+  const address = row.location?.trim() || '';
+  const situation = row.geographicSituation?.trim() || '';
+
+  if (situation && !looksLikeGeographicUrl(situation) && !address) {
+    return { location: situation, geographicSituation: null };
+  }
+
+  return {
+    location: address || null,
+    geographicSituation: situation || null,
+  };
 }
 
 export function createEmptyImportRow(): LeadImportRow {

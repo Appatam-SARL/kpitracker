@@ -1,6 +1,11 @@
 import {
+  DEFAULT_ACTIVITY_DOMAINS,
   DEFAULT_ACTIVITY_SECTORS,
   DEFAULT_CIVILITIES,
+  DEFAULT_LEAD_SOURCES,
+  formatDecisionRoleLabel,
+  formatLeadTypeLabel,
+  matchCiapListValue,
 } from '@/config/lead-options';
 
 export const LABEL_NONE = 'Non renseigné';
@@ -17,6 +22,9 @@ function normalizeAgainstList(
   const trimmed = raw.trim();
   if (!trimmed) return LABEL_NONE;
 
+  const matched = matchCiapListValue(trimmed, canonical);
+  if (matched) return matched;
+
   const lower = trimmed.toLowerCase();
   const exact = canonical.find((c) => c.toLowerCase() === lower);
   if (exact) return exact;
@@ -31,6 +39,9 @@ function normalizeAgainstList(
 
   if (canonical.includes(LABEL_OTHER as (typeof canonical)[number])) {
     return LABEL_OTHER;
+  }
+  if (canonical.includes(LABEL_OTHERS_BUCKET as (typeof canonical)[number])) {
+    return LABEL_OTHERS_BUCKET;
   }
   return trimmed;
 }
@@ -50,7 +61,10 @@ export function normalizeActivityDomain(
 ): string {
   if (raw == null || typeof raw !== 'string') return LABEL_NONE;
   const trimmed = raw.replace(/\s+/g, ' ').trim();
-  return trimmed || LABEL_NONE;
+  if (!trimmed) return LABEL_NONE;
+  return (
+    matchCiapListValue(trimmed, DEFAULT_ACTIVITY_DOMAINS) ?? trimmed
+  );
 }
 
 export function normalizeCompanyName(raw: string | null | undefined): string {
@@ -69,6 +83,24 @@ export function normalizeJobTitle(raw: string | null | undefined): string {
   if (raw == null || typeof raw !== 'string') return LABEL_NONE;
   const trimmed = raw.replace(/\s+/g, ' ').trim();
   return trimmed || LABEL_NONE;
+}
+
+export function normalizeLeadSource(raw: string | null | undefined): string {
+  return normalizeAgainstList(raw, DEFAULT_LEAD_SOURCES);
+}
+
+export function normalizeLeadType(raw: string | null | undefined): string {
+  if (raw == null || (typeof raw === 'string' && !raw.trim())) {
+    return formatLeadTypeLabel('NON_DETERMINE');
+  }
+  return formatLeadTypeLabel(raw);
+}
+
+export function normalizeDecisionRole(raw: string | null | undefined): string {
+  if (raw == null || (typeof raw === 'string' && !raw.trim())) {
+    return formatDecisionRoleLabel('NON_DETERMINE');
+  }
+  return formatDecisionRoleLabel(raw);
 }
 
 /** Agrège des lignes groupBy { field, count } vers des libellés normalisés. */

@@ -30,16 +30,21 @@ export default function GroupCompanySelect({
   includeDefaultScopeOption = false,
   includeHoldingOption = false,
 }: GroupCompanySelectProps) {
+  const showLabel = Boolean(label?.trim());
+
   return (
     <div className={`flex flex-col gap-1 min-w-[180px] ${className}`}>
-      <label className='text-[11px] text-gray-500' htmlFor={id}>
-        {label}
-      </label>
+      {showLabel ? (
+        <label className='text-[11px] text-gray-500' htmlFor={id}>
+          {label}
+        </label>
+      ) : null}
       <select
         id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={selectClassName}
+        aria-label={showLabel ? undefined : 'Filtrer par entreprise'}
       >
         {includeDefaultScopeOption && (
           <option value=''>Périmètre par défaut (ma société)</option>

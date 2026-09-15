@@ -3,6 +3,7 @@ import {
   DEFAULT_CIVILITIES,
   DEFAULT_LEAD_SOURCES,
   DEFAULT_LEAD_TYPES,
+  matchCiapListValue,
 } from '@/config/lead-options';
 import { validateActivityDomainsCell } from '@/lib/lead-activity-domains';
 import { parseLeadType } from '@/lib/lead-type';
@@ -32,6 +33,10 @@ const LIST_FIELD_CONFIG: ReadonlyArray<{
   label: string;
   options: readonly string[];
   resolve: (row: LeadImportListFields) => string | undefined;
+  match?: (
+    raw: string | undefined,
+    options: readonly string[],
+  ) => string | null;
 }> = [
   {
     key: 'civility',
@@ -44,6 +49,7 @@ const LIST_FIELD_CONFIG: ReadonlyArray<{
     label: "Secteur d'activités",
     options: DEFAULT_ACTIVITY_SECTORS,
     resolve: (row) => row.activitySector,
+    match: matchCiapListValue,
   },
   {
     key: 'source',
@@ -93,14 +99,14 @@ export function validateAndNormalizeLeadImportLists(
     leadType: null,
   };
 
-  for (const { key, label, options, resolve } of LIST_FIELD_CONFIG) {
+  for (const { key, label, options, resolve, match } of LIST_FIELD_CONFIG) {
     const raw = resolve(row);
     const trimmed = raw?.trim();
     if (!trimmed) continue;
 
-    const match = matchListValue(trimmed, options);
-    if (match) {
-      normalized[key] = match;
+    const matched = (match ?? matchListValue)(raw, options);
+    if (matched) {
+      normalized[key] = matched;
       continue;
     }
 

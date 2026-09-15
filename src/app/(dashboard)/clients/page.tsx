@@ -2,6 +2,7 @@
 
 import ClientEditSheet from '@/components/ClientEditSheet';
 import ClientViewSheet from '@/components/ClientViewSheet';
+import ClientsOnboardingCarousel from '@/components/clients/ClientsOnboardingCarousel';
 import NeumoCard from '@/components/NeumoCard';
 import SkeletonLoader from '@/components/SkeletonLoader';
 import { withDashboardLayout } from '@/components/layouts/withDashboardLayout';
@@ -15,6 +16,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableEmpty,
   TableHead,
   TableHeader,
   TableRow,
@@ -29,7 +31,7 @@ import {
   Pencil,
   Search,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 const CLIENTS_PER_PAGE = 10;
 
@@ -65,6 +67,7 @@ function ClientsPageInner() {
   const [currentPage, setCurrentPage] = useState(1);
   const [viewClient, setViewClient] = useState<Client | null>(null);
   const [editClient, setEditClient] = useState<Client | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fetchClients = async () => {
@@ -116,7 +119,15 @@ function ClientsPageInner() {
 
   return (
     <>
-      <section className='flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-2'>
+      <section className='mt-2 flex flex-col gap-4'>
+        <ClientsOnboardingCarousel
+          onShowList={() => setViewMode('table')}
+          onFocusSearch={() => {
+            window.setTimeout(() => searchInputRef.current?.focus(), 350);
+          }}
+          onShowGrid={() => setViewMode('grid')}
+        />
+
         <div>
           <h1 className='text-xl md:text-2xl font-semibold text-primary'>
             Clients
@@ -127,13 +138,17 @@ function ClientsPageInner() {
         </div>
       </section>
 
-      <NeumoCard className='mt-4 p-4 flex flex-col gap-4 bg-white'>
+      <NeumoCard
+        id='clients-liste'
+        className='mt-4 scroll-mt-4 p-4 flex flex-col gap-4 bg-white'
+      >
         <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>
           <h2 className='text-sm font-semibold text-primary'>Liste des clients</h2>
           <div className='flex flex-wrap items-center gap-3'>
             <div className='flex items-center gap-2 bg-gray-50 rounded-full px-3 py-1.5 border border-gray-100 text-xs w-full sm:w-56'>
               <Search className='w-4 h-4 text-gray-400 shrink-0' />
               <input
+                ref={searchInputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder='Filtrer par nom, contact, société...'
@@ -247,88 +262,74 @@ function ClientsPageInner() {
                 ))}
               </div>
             ) : (
-              <div className='overflow-x-auto rounded-2xl border border-gray-100'>
-                <Table>
-                  <TableHeader>
-                    <TableRow className='bg-gray-50'>
-                      <TableHead className='text-[11px] font-medium text-gray-600'>
-                        Nom du client
-                      </TableHead>
-                      <TableHead className='text-[11px] font-medium text-gray-600'>
-                        Société
-                      </TableHead>
-                      <TableHead className='text-[11px] font-medium text-gray-600'>
-                        Converti par
-                      </TableHead>
-                      <TableHead className='text-[11px] font-medium text-gray-600'>
-                        Contact
-                      </TableHead>
-                      <TableHead className='text-[11px] font-medium text-gray-600 text-right'>
-                        CA total
-                      </TableHead>
-                      <TableHead className='text-[11px] font-medium text-gray-600 text-right w-20'>
-                        Actions
-                      </TableHead>
+              <Table>
+                <TableHeader>
+                  <TableRow className='hover:bg-transparent'>
+                    <TableHead>Nom du client</TableHead>
+                    <TableHead>Société</TableHead>
+                    <TableHead>Converti par</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead className='text-right'>CA total</TableHead>
+                    <TableHead className='text-right w-20'>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginated.map((client) => (
+                    <TableRow key={client.id}>
+                      <TableCell className='text-primary font-medium'>
+                        {client.name}
+                      </TableCell>
+                      <TableCell>
+                        {client.company?.name ?? <TableEmpty />}
+                      </TableCell>
+                      <TableCell>
+                        {client.convertedBy?.name ?? <TableEmpty />}
+                      </TableCell>
+                      <TableCell>
+                        {client.contact ?? 'Aucun contact'}
+                      </TableCell>
+                      <TableCell className='text-right'>
+                        {client.totalRevenue.toLocaleString('fr-FR', {
+                          style: 'currency',
+                          currency: 'XOF',
+                        })}
+                      </TableCell>
+                      <TableCell className='text-right'>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type='button'
+                              className='inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-50 text-gray-500 hover:text-primary border border-gray-100'
+                            >
+                              <MoreHorizontal className='w-4 h-4' />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent side='left' align='end'>
+                            <DropdownMenuItem
+                              onSelect={(e) => {
+                                e.preventDefault();
+                                setViewClient(client);
+                              }}
+                            >
+                              <Eye className='w-4 h-4 mr-2' />
+                              Voir
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={(e) => {
+                                e.preventDefault();
+                                setEditClient(client);
+                              }}
+                            >
+                              <Pencil className='w-4 h-4 mr-2' />
+                              Modifier
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginated.map((client) => (
-                      <TableRow key={client.id} className='hover:bg-gray-50/60'>
-                        <TableCell className='py-2.5 text-[12px] text-primary'>
-                          {client.name}
-                        </TableCell>
-                        <TableCell className='py-2.5 text-[11px] text-gray-700'>
-                          {client.company?.name ?? '—'}
-                        </TableCell>
-                        <TableCell className='py-2.5 text-[11px] text-gray-600'>
-                          {client.convertedBy?.name ?? '—'}
-                        </TableCell>
-                        <TableCell className='py-2.5 text-[11px] text-gray-600'>
-                          {client.contact ?? 'Aucun contact'}
-                        </TableCell>
-                        <TableCell className='py-2.5 text-[11px] text-gray-700 text-right'>
-                          {client.totalRevenue.toLocaleString('fr-FR', {
-                            style: 'currency',
-                            currency: 'XOF',
-                          })}
-                        </TableCell>
-                        <TableCell className='py-2.5 text-right'>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <button
-                                type='button'
-                                className='inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-50 text-gray-500 hover:text-primary border border-gray-100'
-                              >
-                                <MoreHorizontal className='w-4 h-4' />
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent side='left' align='end'>
-                              <DropdownMenuItem
-                                onSelect={(e) => {
-                                  e.preventDefault();
-                                  setViewClient(client);
-                                }}
-                              >
-                                <Eye className='w-4 h-4 mr-2' />
-                                Voir
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onSelect={(e) => {
-                                  e.preventDefault();
-                                  setEditClient(client);
-                                }}
-                              >
-                                <Pencil className='w-4 h-4 mr-2' />
-                                Modifier
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                  ))}
+                </TableBody>
+              </Table>
             )}
 
             {filtered.length > 0 && totalPages > 1 && (

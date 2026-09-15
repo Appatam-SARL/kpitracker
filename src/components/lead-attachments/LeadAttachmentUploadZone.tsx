@@ -5,12 +5,14 @@ import { CloudUpload, FileUp } from "lucide-react";
 
 interface LeadAttachmentUploadZoneProps {
   leadId: string;
+  contactId?: string;
   onUploaded: () => void;
   disabled?: boolean;
 }
 
 export default function LeadAttachmentUploadZone({
   leadId,
+  contactId,
   onUploaded,
   disabled = false,
 }: LeadAttachmentUploadZoneProps) {
@@ -26,6 +28,7 @@ export default function LeadAttachmentUploadZone({
       try {
         const formData = new FormData();
         formData.append("file", file);
+        if (contactId) formData.append("contactId", contactId);
         const res = await fetch(`/api/leads/${leadId}/attachments`, {
           method: "POST",
           body: formData,
@@ -41,7 +44,7 @@ export default function LeadAttachmentUploadZone({
         setUploading(false);
       }
     },
-    [leadId, onUploaded]
+    [leadId, contactId, onUploaded]
   );
 
   const handleDrop = useCallback(

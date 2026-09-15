@@ -8,6 +8,7 @@ import { z } from 'zod';
 const createCompanySchema = z.object({
   name: z.string().min(1, "Nom de l'entreprise requis"),
   plan: z.enum(['free', 'pro', 'business']).default('free'),
+  kind: z.enum(['GROUP', 'CLIENT']).default('GROUP'),
   firstUser: z.object({
     name: z.string().min(1, 'Nom du manager requis'),
     email: z.string().email('Email invalide'),
@@ -60,6 +61,7 @@ export async function POST(req: Request) {
       data: {
         name: body.name,
         plan: body.plan,
+        kind: body.kind,
       },
     });
 

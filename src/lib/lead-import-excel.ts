@@ -8,6 +8,7 @@ import {
   type LeadExportRecord,
 } from '@/config/lead-import-template';
 import {
+  DEFAULT_ACTIVITY_DOMAINS,
   DEFAULT_ACTIVITY_SECTORS,
   DEFAULT_CIVILITIES,
   DEFAULT_LEAD_SOURCES,
@@ -42,7 +43,13 @@ const LIST_COLUMN_CONFIG: ReadonlyArray<{
     column: 'I',
     listColumn: 'B',
     options: DEFAULT_ACTIVITY_SECTORS,
-    error: "Choisissez un secteur d'activités dans la liste.",
+    error: "Choisissez un secteur d'activités dans la liste CIAP.",
+  },
+  {
+    column: 'J',
+    listColumn: 'E',
+    options: DEFAULT_ACTIVITY_DOMAINS,
+    error: "Choisissez un domaine d'activités dans la liste CIAP.",
   },
   {
     column: 'K',
@@ -109,11 +116,13 @@ function addHiddenListSheet(workbook: Workbook): Record<string, number> {
   const sectorCount = fillListColumn(listSheet, 'B', DEFAULT_ACTIVITY_SECTORS);
   const sourceCount = fillListColumn(listSheet, 'C', DEFAULT_LEAD_SOURCES);
   const leadTypeCount = fillListColumn(listSheet, 'D', DEFAULT_LEAD_TYPES);
+  const domainCount = fillListColumn(listSheet, 'E', DEFAULT_ACTIVITY_DOMAINS);
   return {
     A: civilityCount,
     B: sectorCount,
     C: sourceCount,
     D: leadTypeCount,
+    E: domainCount,
   };
 }
 

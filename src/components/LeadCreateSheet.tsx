@@ -10,6 +10,10 @@ import {
   DEFAULT_LEAD_SOURCES,
   LEAD_TYPE_OPTIONS,
 } from "@/config/lead-options";
+import {
+  NEGOTIATION_STAGE_FIELD_LABEL,
+  NEGOTIATION_STAGE_OPTIONS,
+} from "@/config/negotiation-stage";
 
 interface LeadCreateSheetProps {
   open: boolean;
@@ -17,20 +21,12 @@ interface LeadCreateSheetProps {
   onCreated?: (lead: any) => void;
 }
 
-// Options alignées avec l'enum LeadStatus du schema Prisma
-const STATUS_OPTIONS = [
-  { value: "NEW", label: "Nouveau lead" },
-  { value: "CONTACTED", label: "Contacté" },
-  { value: "QUALIFIED", label: "Qualifié" },
-  { value: "CONVERTED", label: "Converti" },
-  { value: "LOST", label: "Perdu" },
-];
-
 export default function LeadCreateSheet({ open, onClose, onCreated }: LeadCreateSheetProps) {
-  const [status, setStatus] = useState("NEW");
+  const [status, setStatus] = useState("EN_PROSPECTION");
   const [leadType, setLeadType] = useState("NON_DETERMINE");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activitySector, setActivitySector] = useState("");
   const [selectedActivityDomains, setSelectedActivityDomains] = useState<string[]>([]);
 
   if (!open) return null;
@@ -45,7 +41,6 @@ export default function LeadCreateSheet({ open, onClose, onCreated }: LeadCreate
     const email = String(data.get("email") || "");
     const phone = String(data.get("phone") || "");
     const source = String(data.get("source") || "");
-    const activitySector = String(data.get("activitySector") || "");
     const civility = String(data.get("civility") || "");
     const notes = String(data.get("notes") || "");
     const companyName = String(data.get("companyName") || "");
@@ -90,8 +85,9 @@ export default function LeadCreateSheet({ open, onClose, onCreated }: LeadCreate
       const created = await res.json();
       onCreated?.(created);
       form.reset();
-      setStatus("NEW");
+      setStatus("EN_PROSPECTION");
       setLeadType("NON_DETERMINE");
+      setActivitySector("");
       setSelectedActivityDomains([]);
       onClose();
     } catch (err: any) {
@@ -168,7 +164,7 @@ export default function LeadCreateSheet({ open, onClose, onCreated }: LeadCreate
               <Field
                 name="source"
                 label="Source"
-                placeholder="Facebook, WhatsApp, Site web..."
+                placeholder="Facebook, LinkedIn, Tik Tok..."
                 description="Permet d'analyser d'où viennent vos leads."
                 list="lead-source-options"
               />
@@ -177,21 +173,30 @@ export default function LeadCreateSheet({ open, onClose, onCreated }: LeadCreate
                   <option key={src} value={src} />
                 ))}
               </datalist>
-              <Field
-                name="activitySector"
-                label="Secteur d'activités"
-                placeholder="Ex: Commerce & retail, BTP & construction..."
-                description="Secteur d'activité économique du lead."
-                list="lead-activity-sector-options"
-              />
-              <datalist id="lead-activity-sector-options">
-                {DEFAULT_ACTIVITY_SECTORS.map((sector) => (
-                  <option key={sector} value={sector} />
-                ))}
-              </datalist>
+              <label className="flex flex-col gap-1 text-xs text-gray-700">
+                <span className="text-[11px] text-gray-600">
+                  Secteur d&apos;activités
+                </span>
+                <select
+                  value={activitySector}
+                  onChange={(e) => {
+                    setActivitySector(e.target.value);
+                    setSelectedActivityDomains([]);
+                  }}
+                  className="h-8 rounded-xl border border-gray-200 px-3 text-[11px] bg-gray-50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                >
+                  <option value="">Sélectionner un secteur…</option>
+                  {DEFAULT_ACTIVITY_SECTORS.map((sector) => (
+                    <option key={sector} value={sector}>
+                      {sector}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <ActivityDomainsChecklist
                 selected={selectedActivityDomains}
                 onChange={setSelectedActivityDomains}
+                activitySector={activitySector}
               />
               <Field
                 name="civility"
@@ -213,13 +218,15 @@ export default function LeadCreateSheet({ open, onClose, onCreated }: LeadCreate
               />
 
               <div className="flex flex-col gap-1 mt-1">
-                <span className="text-[11px] text-gray-500">Statut</span>
+                <span className="text-[11px] text-gray-500">
+                  {NEGOTIATION_STAGE_FIELD_LABEL}
+                </span>
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
                   className="h-8 rounded-xl border border-gray-200 px-3 text-[11px] bg-gray-50 focus:outline-none focus:ring-1 focus:ring-primary/40"
                 >
-                  {STATUS_OPTIONS.map((opt) => (
+                  {NEGOTIATION_STAGE_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>

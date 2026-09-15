@@ -1,12 +1,12 @@
 import { getCurrentUser } from "@/lib/auth";
 import { resolveDashboardLeadWhere } from "@/lib/dashboard-company-scope";
+import { NEGOTIATION_STAGE_ORDER } from "@/config/negotiation-stage";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const STATUS_KEYS = ["NEW", "CONTACTED", "QUALIFIED", "LOST", "CONVERTED"] as const;
-type StatusKey = (typeof STATUS_KEYS)[number];
+type StatusKey = (typeof NEGOTIATION_STAGE_ORDER)[number];
 
 export async function GET(req: Request) {
   try {
@@ -19,19 +19,15 @@ export async function GET(req: Request) {
     const whereBase = await resolveDashboardLeadWhere(user, companyIdParam);
     if (whereBase instanceof NextResponse) return whereBase;
 
-    const group = await prisma.lead.groupBy({
+    const group = await prisma.prospect.groupBy({
       by: ["status"],
       where: whereBase,
       _count: { _all: true },
     });
 
-    const counts: Record<StatusKey, number> = {
-      NEW: 0,
-      CONTACTED: 0,
-      QUALIFIED: 0,
-      LOST: 0,
-      CONVERTED: 0,
-    };
+    const counts = Object.fromEntries(
+      NEGOTIATION_STAGE_ORDER.map((status) => [status, 0]),
+    ) as Record<StatusKey, number>;
 
     for (const row of group) {
       const key = row.status as StatusKey;
@@ -41,7 +37,10 @@ export async function GET(req: Request) {
     }
 
     return NextResponse.json(
-      STATUS_KEYS.map((status) => ({ status, count: counts[status] })),
+      NEGOTIATION_STAGE_ORDER.map((status) => ({
+        status,
+        count: counts[status],
+      })),
     );
   } catch (error) {
     console.error("GET /api/dashboard/lead-status-distribution error", error);

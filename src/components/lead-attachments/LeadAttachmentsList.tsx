@@ -15,6 +15,8 @@ export interface LeadAttachmentItem {
   fileSize: number;
   storagePath: string;
   createdAt: string;
+  label?: string | null;
+  contactId?: string | null;
 }
 
 interface LeadAttachmentsListProps {
@@ -109,6 +111,11 @@ export default function LeadAttachmentsList({
               {att.fileType.slice(0, 3)}
             </div>
             <div className="min-w-0 flex-1">
+              {att.label ? (
+                <p className="text-[10px] font-medium text-primary truncate">
+                  {att.label}
+                </p>
+              ) : null}
               <p className="text-[11px] font-medium text-gray-800 truncate">
                 {att.fileName}
               </p>

@@ -27,8 +27,32 @@ export type CompanySalesRow = {
   nbClients: number;
   caTotal: number;
   conversionRate: number;
-  /** Stock total de prospects actifs sur la filiale (hors filtre période). */
+  /** Stock total de prospects actifs (pool GROUP partagé). */
   nbProspectsTotal: number;
+};
+
+export type ProspectOfferLine = {
+  prospectName: string;
+  prestations: string;
+  offerAmount: number;
+  salesCount: number;
+  realizedAmount: number;
+  stageLabel: string;
+  commercialName: string;
+  source: string;
+};
+
+export type SalesCockpit = {
+  objectiveRevenue: number;
+  realizedRevenue: number;
+  /** Réalisé − objectif (négatif = retard, comme le tableau de pilotage). */
+  remainder: number;
+  concludedSalesCount: number;
+  pipelineAmount: number;
+  attainmentRate: number;
+  negotiationFilter: string;
+  concludedOnLabel: string;
+  lines: ProspectOfferLine[];
 };
 
 export type SalesSummaryReport = {
@@ -48,6 +72,7 @@ export type SalesSummaryReport = {
   }>;
   /** Ventes et prospects par filiale — périmètre holding uniquement. */
   byCompany: CompanySalesRow[];
+  cockpit?: SalesCockpit;
 };
 
 export type BuildSalesSummaryParams = {
@@ -63,12 +88,20 @@ export async function buildSalesSummaryReport(
 ): Promise<SalesSummaryReport> {
   const { companyFilter, fromDate, toDate, userId, source } = params;
 
-  const leadWhere = {
-    ...companyFilter,
+  const prospectWhere = {
     ...activeOnlyWhere,
     createdAt: { gte: fromDate, lte: toDate },
-    ...(userId && { assignedTo: userId }),
     ...(source !== undefined && source !== '' && { source }),
+    ...(userId && {
+      contacts: { some: { createdById: userId, deletedAt: null } },
+    }),
+  };
+
+  const contactWhere = {
+    deletedAt: null,
+    createdAt: { gte: fromDate, lte: toDate },
+    ...(userId && { createdById: userId }),
+    createdBy: companyFilter,
   };
 
   const clientWhere = {
@@ -81,20 +114,20 @@ export async function buildSalesSummaryReport(
     nbLeadsTotal,
     nbClientsTotal,
     clientsForCa,
-    leadUserCounts,
+    contactUserCounts,
     clientUserCounts,
     leadSourceCounts,
     clientSourceCounts,
   ] = await Promise.all([
-    prisma.lead.count({ where: leadWhere }),
+    prisma.prospect.count({ where: prospectWhere }),
     prisma.client.count({ where: clientWhere }),
     prisma.client.findMany({
       where: clientWhere,
       select: { totalRevenue: true },
     }),
-    prisma.lead.groupBy({
-      by: ['assignedTo'],
-      where: { ...leadWhere, assignedTo: { not: null } },
+    prisma.prospectContact.groupBy({
+      by: ['createdById'],
+      where: contactWhere,
       _count: { id: true },
     }),
     prisma.client.groupBy({
@@ -103,9 +136,9 @@ export async function buildSalesSummaryReport(
       _count: { id: true },
       _sum: { totalRevenue: true },
     }),
-    prisma.lead.groupBy({
+    prisma.prospect.groupBy({
       by: ['source'],
-      where: leadWhere,
+      where: prospectWhere,
       _count: { id: true },
     }),
     prisma.client.groupBy({
@@ -118,7 +151,7 @@ export async function buildSalesSummaryReport(
   const caTotal = clientsForCa.reduce((s, c) => s + (c.totalRevenue ?? 0), 0);
 
   const userIds = new Set<string>();
-  leadUserCounts.forEach((r) => r.assignedTo && userIds.add(r.assignedTo));
+  contactUserCounts.forEach((r) => userIds.add(r.createdById));
   clientUserCounts.forEach(
     (r) => r.convertedById && userIds.add(r.convertedById),
   );
@@ -130,7 +163,7 @@ export async function buildSalesSummaryReport(
 
   const byUser: SalesSummaryReport['byUser'] = [...userIds].map((uid) => {
     const leads =
-      leadUserCounts.find((r) => r.assignedTo === uid)?._count?.id ?? 0;
+      contactUserCounts.find((r) => r.createdById === uid)?._count?.id ?? 0;
     const clientsRow = clientUserCounts.find((r) => r.convertedById === uid);
     const clients = clientsRow?._count?.id ?? 0;
     const ca = clientsRow?._sum?.totalRevenue ?? 0;
@@ -167,48 +200,48 @@ export async function buildSalesSummaryReport(
       : null;
 
   if (companyIds && companyIds.length > 0) {
-    const prospectStockWhere = {
-      companyId: { in: companyIds },
-      ...activeOnlyWhere,
-      ...(userId && { assignedTo: userId }),
-      ...(source !== undefined && source !== '' && { source }),
-    };
+    const nbProspectsTotal = await prisma.prospect.count({
+      where: {
+        ...activeOnlyWhere,
+        ...(source !== undefined && source !== '' && { source }),
+      },
+    });
 
-    const [leadByCompany, clientByCompany, prospectStockByCompany, companies] =
-      await Promise.all([
-        prisma.lead.groupBy({
-          by: ['companyId'],
-          where: leadWhere,
-          _count: { id: true },
-        }),
-        prisma.client.groupBy({
-          by: ['companyId'],
-          where: clientWhere,
-          _count: { id: true },
-          _sum: { totalRevenue: true },
-        }),
-        prisma.lead.groupBy({
-          by: ['companyId'],
-          where: prospectStockWhere,
-          _count: { id: true },
-        }),
-        prisma.company.findMany({
-          where: { id: { in: companyIds } },
-          select: { id: true, name: true },
-        }),
-      ]);
+    const [contactsInPeriod, clientByCompany, companies] = await Promise.all([
+      prisma.prospectContact.findMany({
+        where: {
+          deletedAt: null,
+          createdAt: { gte: fromDate, lte: toDate },
+          ...(userId && { createdById: userId }),
+          createdBy: { companyId: { in: companyIds } },
+        },
+        select: { createdBy: { select: { companyId: true } } },
+      }),
+      prisma.client.groupBy({
+        by: ['companyId'],
+        where: clientWhere,
+        _count: { id: true },
+        _sum: { totalRevenue: true },
+      }),
+      prisma.company.findMany({
+        where: { id: { in: companyIds } },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    const leadsByCompany = new Map<string, number>();
+    for (const c of contactsInPeriod) {
+      const cid = c.createdBy.companyId;
+      leadsByCompany.set(cid, (leadsByCompany.get(cid) ?? 0) + 1);
+    }
 
     const nameById = new Map(companies.map((c) => [c.id, c.name]));
     byCompany = companyIds
       .map((companyId) => {
-        const leads =
-          leadByCompany.find((r) => r.companyId === companyId)?._count.id ?? 0;
+        const leads = leadsByCompany.get(companyId) ?? 0;
         const clientRow = clientByCompany.find((r) => r.companyId === companyId);
         const clients = clientRow?._count.id ?? 0;
         const ca = clientRow?._sum.totalRevenue ?? 0;
-        const nbProspectsTotal =
-          prospectStockByCompany.find((r) => r.companyId === companyId)?._count
-            .id ?? 0;
         return {
           companyId,
           companyName: nameById.get(companyId) ?? 'Entreprise inconnue',
@@ -228,11 +261,246 @@ export async function buildSalesSummaryReport(
       .sort((a, b) => b.nbProspectsTotal - a.nbProspectsTotal);
   }
 
+  const cockpit = await buildSalesCockpit({
+    ...params,
+    fallbackRealizedRevenue: caTotal,
+    fallbackConcludedCount: nbClientsTotal,
+  });
+
   return {
     global: { nbLeadsTotal, nbClientsTotal, caTotal },
     byUser,
     bySource,
     byCompany,
+    cockpit,
+  };
+}
+
+const STAGE_LABEL: Record<string, string> = {
+  EN_PROSPECTION: 'En prospection',
+  VENTE_CONCLUE: 'Vente conclue',
+  VENTE_PERDUE: 'Vente perdue',
+};
+
+function interestLabel(item: {
+  customName?: string | null;
+  product?: { name: string } | null;
+  service?: { name: string } | null;
+}): string {
+  return (
+    item.customName?.trim() ||
+    item.product?.name?.trim() ||
+    item.service?.name?.trim() ||
+    ''
+  );
+}
+
+function dominantStage(stages: string[]): string {
+  if (stages.includes('VENTE_CONCLUE')) return 'VENTE_CONCLUE';
+  if (stages.includes('EN_PROSPECTION')) return 'EN_PROSPECTION';
+  if (stages.includes('VENTE_PERDUE')) return 'VENTE_PERDUE';
+  return 'EN_PROSPECTION';
+}
+
+async function buildSalesCockpit(
+  params: BuildSalesSummaryParams & {
+    fallbackRealizedRevenue: number;
+    fallbackConcludedCount: number;
+  },
+): Promise<SalesCockpit> {
+  const { companyFilter, fromDate, toDate, userId, source } = params;
+
+  const [goals, sales, contacts] = await Promise.all([
+    prisma.salesGoal.findMany({
+      where: {
+        deletedAt: null,
+        periodStart: { lte: toDate },
+        periodEnd: { gte: fromDate },
+        ...(userId ? { userId } : {}),
+        user: companyFilter,
+      },
+      select: { targetRevenue: true },
+    }),
+    prisma.sale.findMany({
+      where: {
+        date: { gte: fromDate, lte: toDate },
+        ...companyFilter,
+        ...(userId ? { userId } : {}),
+      },
+      select: {
+        amount: true,
+        client: {
+          select: {
+            name: true,
+            companyName: true,
+            convertedFromProspectId: true,
+            source: true,
+          },
+        },
+        user: { select: { name: true } },
+        items: {
+          select: {
+            product: { select: { name: true } },
+            service: { select: { name: true } },
+          },
+        },
+      },
+    }),
+    prisma.prospectContact.findMany({
+      where: {
+        deletedAt: null,
+        createdBy: companyFilter,
+        ...(userId ? { createdById: userId } : {}),
+        prospect: {
+          deletedAt: null,
+          ...(source ? { source } : {}),
+        },
+        OR: [
+          { createdAt: { gte: fromDate, lte: toDate } },
+          { updatedAt: { gte: fromDate, lte: toDate } },
+          { negotiationStage: 'VENTE_CONCLUE' },
+          { productInterests: { some: {} } },
+          { serviceInterests: { some: {} } },
+        ],
+      },
+      select: {
+        negotiationStage: true,
+        createdBy: { select: { name: true } },
+        prospect: { select: { id: true, name: true, source: true } },
+        productInterests: {
+          select: {
+            estimatedValue: true,
+            customName: true,
+            product: { select: { name: true } },
+          },
+        },
+        serviceInterests: {
+          select: {
+            estimatedValue: true,
+            customName: true,
+            service: { select: { name: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  type Bucket = {
+    prospectName: string;
+    prestations: Set<string>;
+    offerAmount: number;
+    salesCount: number;
+    realizedAmount: number;
+    stages: string[];
+    commercials: Set<string>;
+    source: string;
+  };
+
+  const buckets = new Map<string, Bucket>();
+  const ensure = (key: string, name: string, src: string | null) => {
+    const existing = buckets.get(key);
+    if (existing) return existing;
+    const created: Bucket = {
+      prospectName: name.trim() || 'Non renseigné',
+      prestations: new Set(),
+      offerAmount: 0,
+      salesCount: 0,
+      realizedAmount: 0,
+      stages: [],
+      commercials: new Set(),
+      source: src?.trim() || 'Non renseigné',
+    };
+    buckets.set(key, created);
+    return created;
+  };
+
+  for (const contact of contacts) {
+    const bucket = ensure(
+      contact.prospect.id,
+      contact.prospect.name,
+      contact.prospect.source,
+    );
+    bucket.stages.push(contact.negotiationStage);
+    if (contact.createdBy?.name) bucket.commercials.add(contact.createdBy.name);
+    if (contact.negotiationStage === 'VENTE_CONCLUE') bucket.salesCount += 1;
+    for (const item of [
+      ...contact.productInterests,
+      ...contact.serviceInterests,
+    ]) {
+      const label = interestLabel(item);
+      if (label) bucket.prestations.add(label);
+      bucket.offerAmount += item.estimatedValue ?? 0;
+    }
+  }
+
+  for (const sale of sales) {
+    const key =
+      sale.client.convertedFromProspectId ||
+      `client:${sale.client.companyName || sale.client.name}`;
+    const bucket = ensure(
+      key,
+      sale.client.companyName || sale.client.name,
+      sale.client.source,
+    );
+    bucket.realizedAmount += sale.amount ?? 0;
+    if (sale.user?.name) bucket.commercials.add(sale.user.name);
+    for (const item of sale.items) {
+      const label = item.service?.name || item.product?.name;
+      if (label) bucket.prestations.add(label);
+    }
+    if (!sale.client.convertedFromProspectId) bucket.salesCount += 1;
+  }
+
+  const lines: ProspectOfferLine[] = [...buckets.values()]
+    .map((bucket) => ({
+      prospectName: bucket.prospectName,
+      prestations:
+        [...bucket.prestations].sort((a, b) => a.localeCompare(b, 'fr')).join(', ') ||
+        'Non renseigné',
+      offerAmount: bucket.offerAmount,
+      salesCount: bucket.salesCount,
+      realizedAmount: bucket.realizedAmount,
+      stageLabel: STAGE_LABEL[dominantStage(bucket.stages)] ?? 'En prospection',
+      commercialName:
+        [...bucket.commercials].sort((a, b) => a.localeCompare(b, 'fr')).join(', ') ||
+        'Non renseigné',
+      source: bucket.source,
+    }))
+    .filter(
+      (line) =>
+        line.offerAmount > 0 ||
+        line.salesCount > 0 ||
+        line.realizedAmount > 0,
+    )
+    .sort((a, b) => b.offerAmount - a.offerAmount || b.salesCount - a.salesCount);
+
+  const objectiveRevenue = goals.reduce((sum, goal) => sum + (goal.targetRevenue ?? 0), 0);
+  const salesRevenue = sales.reduce((sum, sale) => sum + (sale.amount ?? 0), 0);
+  const realizedRevenue =
+    salesRevenue > 0 ? salesRevenue : params.fallbackRealizedRevenue;
+  const concludedFromContacts = contacts.filter(
+    (contact) => contact.negotiationStage === 'VENTE_CONCLUE',
+  ).length;
+  const concludedSalesCount =
+    sales.length > 0 ? sales.length : concludedFromContacts || params.fallbackConcludedCount;
+  const pipelineAmount = lines.reduce((sum, line) => sum + line.offerAmount, 0);
+  const remainder = realizedRevenue - objectiveRevenue;
+  const attainmentRate =
+    objectiveRevenue > 0 ? (realizedRevenue / objectiveRevenue) * 100 : 0;
+
+  const fromLabel = fromDate.toLocaleDateString('fr-FR', { timeZone: 'UTC' });
+  const toLabel = toDate.toLocaleDateString('fr-FR', { timeZone: 'UTC' });
+
+  return {
+    objectiveRevenue,
+    realizedRevenue,
+    remainder,
+    concludedSalesCount,
+    pipelineAmount,
+    attainmentRate,
+    negotiationFilter: 'Tous',
+    concludedOnLabel: `${fromLabel} → ${toLabel}`,
+    lines,
   };
 }
 
@@ -290,25 +558,26 @@ function enumerateMonthKeys(fromDate: Date, toDate: Date): string[] {
 export async function buildMonthlySalesMetrics(
   params: BuildSalesSummaryParams,
 ): Promise<MonthlySalesMetric[]> {
-  const { companyFilter, fromDate, toDate, userId, source } = params;
+  const { fromDate, toDate, userId, source } = params;
 
-  const leadWhere = {
-    ...companyFilter,
+  const prospectWhere = {
     ...activeOnlyWhere,
     createdAt: { gte: fromDate, lte: toDate },
-    ...(userId && { assignedTo: userId }),
+    ...(userId && {
+      contacts: { some: { createdById: userId, deletedAt: null } },
+    }),
     ...(source !== undefined && source !== '' && { source }),
   };
 
   const clientWhere = {
-    ...companyFilter,
+    ...params.companyFilter,
     convertedAt: { gte: fromDate, lte: toDate },
     ...(userId && { convertedById: userId }),
   };
 
   const [leads, clients] = await Promise.all([
-    prisma.lead.findMany({
-      where: leadWhere,
+    prisma.prospect.findMany({
+      where: prospectWhere,
       select: { createdAt: true },
     }),
     prisma.client.findMany({

@@ -184,6 +184,24 @@ export async function buildStatsDashboardExcelBuffer(
     "Par secteur d'activités",
     payload.demographics.byActivitySector,
   );
+  row = writeLabelCountTable(
+    sheet,
+    row,
+    'Par type de client',
+    payload.demographics.byLeadType,
+  );
+  row = writeLabelCountTable(
+    sheet,
+    row,
+    'Par source du lead',
+    payload.demographics.bySource,
+  );
+  row = writeLabelCountTable(
+    sheet,
+    row,
+    'Par rôle du décideur',
+    payload.demographics.byDecisionRole,
+  );
   if (payload.meta.isHoldingScope && payload.sales.byCompany.length > 0) {
     row = writeSectionTitle(sheet, row, 'Par entreprise (filiales du groupe)');
     row = writeTableHeader(sheet, row, [

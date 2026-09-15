@@ -1,3 +1,4 @@
+import { resolveImportedLocationFields } from '@/config/lead-import-template';
 import type { LeadImportListValidationResult } from '@/lib/lead-import-validation';
 import type { LeadTypeClient } from '@prisma/client';
 
@@ -9,6 +10,7 @@ export type LeadImportRowData = {
   companyName: string;
   jobTitle: string | null;
   location: string | null;
+  geographicSituation: string | null;
   notes: string | null;
   civility: string | null;
   source: string | null;
@@ -23,6 +25,7 @@ export function buildLeadDataFromImportRow(
     email?: string;
     jobTitle?: string;
     location?: string;
+    geographicSituation?: string;
     observation?: string;
   },
   companyName: string,
@@ -30,6 +33,7 @@ export function buildLeadDataFromImportRow(
   lastName: string,
   listValidation: LeadImportListValidationResult,
 ): LeadImportRowData {
+  const { location, geographicSituation } = resolveImportedLocationFields(row);
   return {
     firstName,
     lastName,
@@ -37,7 +41,8 @@ export function buildLeadDataFromImportRow(
     email: row.email?.trim() || null,
     companyName,
     jobTitle: row.jobTitle?.trim() || null,
-    location: row.location?.trim() || null,
+    location,
+    geographicSituation,
     notes: row.observation?.trim() || null,
     civility: listValidation.civility,
     source: listValidation.source,

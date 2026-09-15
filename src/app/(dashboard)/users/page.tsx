@@ -31,6 +31,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableEmpty,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import SkeletonLoader from '@/components/SkeletonLoader';
@@ -331,48 +340,45 @@ function UsersPageInner() {
             </div>
           </div>
         ) : (
-          <div className='overflow-x-auto mt-2'>
-            <table className='min-w-full text-xs'>
-              <thead className='text-gray-400'>
-                <tr className='border-b border-gray-100'>
-                  <th className='py-2 text-left font-medium'>Utilisateur</th>
-                  <th className='py-2 text-left font-medium'>Rôle</th>
+          <>
+            <Table containerClassName='mt-2'>
+              <TableHeader>
+                <TableRow className='hover:bg-transparent'>
+                  <TableHead>Utilisateur</TableHead>
+                  <TableHead>Rôle</TableHead>
                   {showGoalColumn && (
-                    <th className='py-2 text-left font-medium'>Objectif en cours</th>
+                    <TableHead>Objectif en cours</TableHead>
                   )}
-                  <th className='py-2 text-left font-medium'>Statut</th>
-                  <th className='py-2 text-left font-medium'>
-                    Dernière connexion
-                  </th>
-                  <th className='py-2 text-right font-medium'>Actions</th>
-                </tr>
-              </thead>
-              <tbody className='text-gray-700'>
+                  <TableHead>Statut</TableHead>
+                  <TableHead>Dernière connexion</TableHead>
+                  <TableHead className='text-right'>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filtered.map((user) => {
                   const currentGoal = currentGoalsByUserId.get(user.id);
                   return (
-                    <tr
-                      key={user.id}
-                      className='border-b border-gray-50 hover:bg-gray-50/60'
-                    >
-                      <td className='py-2'>
+                    <TableRow key={user.id}>
+                      <TableCell>
                         <div className='flex items-center gap-2'>
-                          <div className='w-7 h-7 rounded-full bg-linear-to-br from-violet-500 to-indigo-500 text-white flex items-center justify-center text-[11px] font-semibold'>
+                          <div className='w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center text-[11px] font-semibold'>
                             {user.name[0]}
                           </div>
                           <div className='flex flex-col'>
-                            <span className='text-xs font-medium'>{user.name}</span>
+                            <span className='text-primary font-medium'>
+                              {user.name}
+                            </span>
                             <span className='text-[11px] text-gray-500'>
                               {user.email}
                             </span>
                           </div>
                         </div>
-                      </td>
-                      <td className='py-2'>
+                      </TableCell>
+                      <TableCell>
                         <UserRoleBadge role={user.role} />
-                      </td>
+                      </TableCell>
                       {showGoalColumn && (
-                        <td className='py-2 text-[11px] text-gray-500'>
+                        <TableCell>
                           {user.role === 'agent' ? (
                             currentGoal ? (
                               <span>
@@ -383,11 +389,11 @@ function UsersPageInner() {
                               <span className='text-gray-400'>Aucun</span>
                             )
                           ) : (
-                            <span className='text-gray-300'>—</span>
+                            <TableEmpty />
                           )}
-                        </td>
+                        </TableCell>
                       )}
-                      <td className='py-2'>
+                      <TableCell>
                         {user.status === 'active' && (
                           <span className='px-2 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[11px]'>
                             Actif
@@ -403,11 +409,9 @@ function UsersPageInner() {
                             Suspendu
                           </span>
                         )}
-                      </td>
-                      <td className='py-2 text-[11px] text-gray-500'>
-                        {user.lastLogin}
-                      </td>
-                      <td className='py-2 text-right relative'>
+                      </TableCell>
+                      <TableCell>{user.lastLogin}</TableCell>
+                      <TableCell className='text-right relative'>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
@@ -506,19 +510,19 @@ function UsersPageInner() {
                               )}
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
 
             {filtered.length === 0 && (
               <div className='py-8 text-center text-[12px] text-gray-500'>
                 Aucun utilisateur ne correspond à votre recherche.
               </div>
             )}
-          </div>
+          </>
         )}
       </NeumoCard>
       <UserCreateSheet

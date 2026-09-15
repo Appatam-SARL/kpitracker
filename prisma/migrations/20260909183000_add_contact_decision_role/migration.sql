@@ -1,0 +1,5 @@
+-- AlterEnum
+CREATE TYPE "DecisionRole" AS ENUM ('DECIDEUR', 'PRESCRIPTEUR', 'INFLUENCEUR', 'RELAI_INTERNE', 'NON_DETERMINE');
+
+-- AlterTable
+ALTER TABLE "ProspectContact" ADD COLUMN "decisionRole" "DecisionRole" NOT NULL DEFAULT 'NON_DETERMINE';

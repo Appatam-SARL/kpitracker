@@ -14,11 +14,8 @@ type AgendaItemWhereInput = NonNullable<
  * GET /api/agenda/calendar?from=ISO&to=ISO[&userId=...][&companyId=...]
  *
  * Règles d'accès :
- * - AGENT  : ne voit que les tâches qu'il/elle a créées (agendaItem.createdById = user.id)
- * - MANAGER / ADMIN :
- *    - par défaut : toutes les tâches créées par des utilisateurs de la société
- *    - si userId est fourni : uniquement les tâches créées par cet utilisateur (même société)
- * - Rôles groupe (directrice commerciale, PDG, directrice opération) : ?companyId= optionnel (aligné /api/leads)
+ * - AGENT  : tâches qu'il/elle a créées
+ * - MANAGER / ADMIN / rôles groupe : tâches créées par les utilisateurs du périmètre société
  */
 export async function GET(req: Request) {
   try {
@@ -61,20 +58,16 @@ export async function GET(req: Request) {
       );
     }
 
-    // Base: plage de dates + périmètre entreprise (via le lead)
     let where: AgendaItemWhereInput = {
       dueDate: { gte: from, lte: to },
-      lead: companyScope,
     };
 
     if (authUser.role === "AGENT") {
       where = {
         dueDate: { gte: from, lte: to },
         createdById: authUser.id,
-        lead: companyScope,
       };
     } else if (createdByIdFilter) {
-      // Filtre optionnel par créateur (commercial) : on vérifie qu'il appartient à la société ciblée
       const target = await prisma.user.findUnique({
         where: { id: createdByIdFilter },
         select: { companyId: true },
@@ -88,14 +81,11 @@ export async function GET(req: Request) {
       where = {
         dueDate: { gte: from, lte: to },
         createdById: createdByIdFilter,
-        lead: companyScope,
       };
     } else {
-      // Manager / Admin / Directrice : toutes les tâches créées par les utilisateurs de l'entreprise
       where = {
         dueDate: { gte: from, lte: to },
         createdBy: companyScope,
-        lead: companyScope,
       };
     }
 
@@ -108,20 +98,31 @@ export async function GET(req: Request) {
             name: true,
           },
         },
-        lead: {
+        prospect: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
-            assignedTo: true,
-            company: { select: { name: true } },
+            name: true,
           },
         },
       },
       orderBy: { dueDate: "asc" },
     });
 
-    return NextResponse.json(items);
+    // Compat UI : exposer aussi `lead` (entreprise) pour AgendaCalendarBlock
+    const mapped = items.map((item) => ({
+      ...item,
+      lead: item.prospect
+        ? {
+            id: item.prospect.id,
+            firstName: item.prospect.name,
+            lastName: "",
+            assignedTo: null,
+            company: null,
+          }
+        : null,
+    }));
+
+    return NextResponse.json(mapped);
   } catch (error) {
     console.error("GET /api/agenda/calendar error", error);
     return NextResponse.json(
@@ -130,4 +131,3 @@ export async function GET(req: Request) {
     );
   }
 }
-

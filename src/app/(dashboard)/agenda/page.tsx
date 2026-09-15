@@ -9,6 +9,7 @@ import { hasGroupCompanyScopeFrontend } from "@/lib/roles";
 import AgendaViewFilter from "@/components/agenda/AgendaViewFilter";
 import type { AgendaView, CustomPeriod } from "@/components/agenda/AgendaViewFilter";
 import AgendaCalendarBlock from "@/components/agenda/AgendaCalendarBlock";
+import AgendaOnboardingCarousel from "@/components/agenda/AgendaOnboardingCarousel";
 
 type CompanyOpt = { id: string; name: string };
 type UserOpt = { id: string; name: string };
@@ -109,6 +110,20 @@ function AgendaPageInner() {
 
   return (
     <div className="flex flex-col gap-4">
+      <AgendaOnboardingCarousel
+        onShowCalendar={() => setView("semaine")}
+        onShowViews={() => setView("mois")}
+        onShowTeamFilter={() => {
+          const target = hasGroupScope
+            ? "#agenda-equipe"
+            : "#agenda-calendrier";
+          document
+            .querySelector(target)
+            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+          if (!hasGroupScope) setView("semaine");
+        }}
+      />
+
       {/* Bloc 1 : En-tête page Agenda */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -126,7 +141,10 @@ function AgendaPageInner() {
 
       {/* Filtre entreprise + commerciale (directrice) */}
       {hasGroupScope && (
-        <section className="rounded-2xl bg-white/80 border border-indigo-100/80 p-3">
+        <section
+          id="agenda-equipe"
+          className="scroll-mt-4 rounded-2xl bg-white/80 border border-indigo-100/80 p-3"
+        >
           <p className="text-[11px] font-medium text-gray-600 mb-2">
             Filtrer par équipe
           </p>
@@ -175,7 +193,10 @@ function AgendaPageInner() {
       )}
 
       {/* Bloc 2 : Filtre de vue (Jour | Semaine | Mois | Année | Période) + choix des dates si Période */}
-      <section className="rounded-2xl bg-white/80 border border-gray-100 p-3">
+      <section
+        id="agenda-vues"
+        className="scroll-mt-4 rounded-2xl bg-white/80 border border-gray-100 p-3"
+      >
         <p className="text-[11px] font-medium text-gray-600 mb-2">Vue</p>
         <AgendaViewFilter
           value={view}
@@ -186,7 +207,11 @@ function AgendaPageInner() {
       </section>
 
       {/* Bloc 3 : Calendrier / liste des tâches selon le filtre */}
-      <section aria-label="Tâches du commercial">
+      <section
+        id="agenda-calendrier"
+        className="scroll-mt-4"
+        aria-label="Tâches du commercial"
+      >
         <AgendaCalendarBlock
           view={view}
           currentDate={currentDate}

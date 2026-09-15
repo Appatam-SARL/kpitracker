@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Prospect" ADD COLUMN IF NOT EXISTS "websiteUrl" TEXT;
+ALTER TABLE "Prospect" ADD COLUMN IF NOT EXISTS "logoUrl" TEXT;
+ALTER TABLE "Prospect" ADD COLUMN IF NOT EXISTS "socialLinks" JSONB;

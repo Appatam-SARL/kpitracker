@@ -4,6 +4,14 @@ import NeumoCard from '@/components/NeumoCard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -72,6 +80,8 @@ const ENTITY_FILTER_OPTIONS: Array<{ type: string; label: string }> = [
   { type: 'Client', label: 'Client' },
   { type: 'SalesGoal', label: 'Objectif' },
   { type: 'LeadAttachment', label: 'Pièce jointe' },
+  { type: 'ProspectAttachment', label: 'Pièce jointe' },
+  { type: 'Prospect', label: 'Prospect' },
 ];
 
 type ProfileActionHistoryProps = {
@@ -394,33 +404,26 @@ export function ProfileActionHistory({
 
       {!loading && !error && data && data.items.length > 0 && (
         <>
-          <div className='overflow-x-auto'>
-            <table className='min-w-full text-xs'>
-              <thead className='text-gray-500 border-b border-gray-100'>
-                <tr>
-                  <th className='py-2 text-left font-medium'>Date</th>
-                  <th className='py-2 text-left font-medium'>Action</th>
-                  <th className='py-2 text-left font-medium'>Entité</th>
-                </tr>
-              </thead>
-              <tbody className='text-gray-700'>
-                {data.items.map((item) => (
-                  <tr
-                    key={item.id}
-                    className='border-b border-gray-50 hover:bg-gray-50/60'
-                  >
-                    <td className='py-2.5 whitespace-nowrap text-gray-500'>
-                      {formatDateTime(item.createdAt)}
-                    </td>
-                    <td className='py-2.5 font-medium'>{item.summary}</td>
-                    <td className='py-2.5 text-gray-500'>
-                      {formatEntityLabel(item)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow className='hover:bg-transparent'>
+                <TableHead>Date</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead>Entité</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.items.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell className='whitespace-nowrap'>
+                    {formatDateTime(item.createdAt)}
+                  </TableCell>
+                  <TableCell className='font-medium'>{item.summary}</TableCell>
+                  <TableCell>{formatEntityLabel(item)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
 
           <div className='flex items-center justify-between gap-2 pt-1'>
             <span className='text-[11px] text-gray-500'>

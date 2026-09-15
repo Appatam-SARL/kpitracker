@@ -3,13 +3,29 @@
 import GroupCompanySelect from '@/components/GroupCompanySelect';
 import NeumoCard from '@/components/NeumoCard';
 import { LeadDemographicsSection } from '@/components/stats/LeadDemographicsSection';
+import StatsOnboardingCarousel from '@/components/stats/StatsOnboardingCarousel';
 import { withDashboardLayout } from '@/components/layouts/withDashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
+import { DEFAULT_LEAD_SOURCES } from '@/config/lead-options';
 import { fetchApi } from '@/lib/fetch-api';
 import { useGroupCompanyScope } from '@/hooks/useGroupCompanyScope';
 import { GROUP_HOLDING_SCOPE_VALUE } from '@/lib/group-scope-roles';
 import { isAdminOrManagerLike } from '@/lib/roles';
-import { Target, TrendingUp, Users } from 'lucide-react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  BarChart3,
+  FileSpreadsheet,
+  Target,
+  TrendingUp,
+  Users,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 interface GoalRow {
@@ -349,63 +365,103 @@ function StatsPageInner() {
 
   return (
     <>
-      <section className='mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'>
-        <div>
-          <h1 className='text-xl md:text-2xl font-semibold text-primary'>
-            Statistiques
-          </h1>
-          <p className='text-xs md:text-sm text-gray-500'>
-            Suivi des performances commerciales, taux de conversion et
-            objectifs.
-          </p>
-        </div>
-        {(hasGroupScope || isManagerOrAdmin) && (
-          <div className='flex flex-col gap-2 sm:flex-row sm:items-end sm:flex-wrap'>
-            {hasGroupScope && (
-              <GroupCompanySelect
-                id='stats-page-company'
-                label='Entreprise (toute la page)'
-                value={selectedCompanyId}
-                options={companyOptions}
-                includeHoldingOption
-                fallbackOption={
-                  authUser?.company
-                    ? { id: authUser.company.id, name: authUser.company.name }
-                    : undefined
-                }
-                onChange={(companyId) => {
-                  setSelectedCompanyId(companyId);
-                  setSelectedCommercialId('');
-                  setReport(null);
-                }}
-              />
-            )}
-            {isManagerOrAdmin && (
-              <div className='flex flex-col gap-1 min-w-[180px]'>
-                <label
-                  className='text-[11px] text-gray-500'
-                  htmlFor='stats-page-commercial'
+      <section className='mt-2 flex flex-col gap-4'>
+        <StatsOnboardingCarousel />
+
+        <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
+          <div className='min-w-0'>
+            <h1 className='text-xl md:text-2xl font-semibold text-primary'>
+              Statistiques
+            </h1>
+            <p className='text-xs md:text-sm text-gray-500 mt-0.5 max-w-2xl'>
+              Pilotage commercial : répartition des prospects, résumé des ventes
+              et suivi des objectifs.
+            </p>
+          </div>
+          {isManagerOrAdmin && (
+            <nav
+              className='flex flex-wrap gap-2'
+              aria-label='Sections statistiques'
+            >
+              {(
+                [
+                  { href: '#stats-repartition', label: 'Répartition', icon: BarChart3 },
+                  { href: '#stats-ventes', label: 'Ventes', icon: FileSpreadsheet },
+                  { href: '#stats-objectifs', label: 'Objectifs', icon: Target },
+                ] as const
+              ).map(({ href, label, icon: Icon }) => (
+                <a
+                  key={href}
+                  href={href}
+                  className='inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-medium text-gray-600 shadow-sm transition hover:border-primary/30 hover:text-primary'
                 >
-                  Commercial (toute la page)
-                </label>
-                <select
-                  id='stats-page-commercial'
-                  value={selectedCommercialId}
-                  onChange={(e) => {
-                    setSelectedCommercialId(e.target.value);
+                  <Icon className='h-3.5 w-3.5' strokeWidth={1.75} />
+                  {label}
+                </a>
+              ))}
+            </nav>
+          )}
+        </div>
+
+        {(hasGroupScope || isManagerOrAdmin) && (
+          <div className='rounded-2xl border border-gray-100 bg-white p-3 sm:p-4 shadow-sm'>
+            <div className='mb-2 flex items-center justify-between gap-2'>
+              <p className='text-[11px] font-semibold uppercase tracking-wide text-gray-400'>
+                Filtres de la page
+              </p>
+              {commercialScopeLabel && (
+                <span className='truncate text-[11px] text-gray-500'>
+                  {commercialScopeLabel}
+                </span>
+              )}
+            </div>
+            <div className='flex flex-col gap-2 sm:flex-row sm:items-end sm:flex-wrap'>
+              {hasGroupScope && (
+                <GroupCompanySelect
+                  id='stats-page-company'
+                  label='Entreprise'
+                  value={selectedCompanyId}
+                  options={companyOptions}
+                  includeHoldingOption
+                  fallbackOption={
+                    authUser?.company
+                      ? { id: authUser.company.id, name: authUser.company.name }
+                      : undefined
+                  }
+                  onChange={(companyId) => {
+                    setSelectedCompanyId(companyId);
+                    setSelectedCommercialId('');
                     setReport(null);
                   }}
-                  className='rounded-lg border border-gray-200 px-2 py-1.5 text-xs w-full sm:w-auto min-w-[180px]'
-                >
-                  <option value=''>Tous les commerciaux</option>
-                  {commercialUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+                />
+              )}
+              {isManagerOrAdmin && (
+                <div className='flex flex-col gap-1 min-w-[180px] flex-1 sm:flex-none'>
+                  <label
+                    className='text-[11px] text-gray-500'
+                    htmlFor='stats-page-commercial'
+                  >
+                    Commercial
+                  </label>
+                  <select
+                    id='stats-page-commercial'
+                    value={selectedCommercialId}
+                    onChange={(e) => {
+                      setSelectedCommercialId(e.target.value);
+                      setReport(null);
+                    }}
+                    className='rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs w-full sm:min-w-[200px]'
+                  >
+                    <option value=''>Tous les commerciaux</option>
+                    {commercialUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </section>
@@ -419,19 +475,26 @@ function StatsPageInner() {
       )}
 
       {isManagerOrAdmin && (
-        <section className='mt-4'>
-          <NeumoCard className='p-5 bg-linear-to-br from-slate-50 via-white to-indigo-50/50 border border-gray-100 shadow-neu-soft flex flex-col gap-4'>
-            <p className='text-xs font-semibold text-primary'>
-              Rapports (MANAGER) — Résumé des ventes
-            </p>
-            <div className='flex flex-col sm:flex-row flex-wrap gap-3 items-end'>
+        <section id='stats-ventes' className='mt-6 scroll-mt-4'>
+          <NeumoCard className='p-5 bg-white border border-gray-100 shadow-neu-soft flex flex-col gap-4'>
+            <div>
+              <p className='text-sm font-semibold text-gray-800'>
+                Résumé des ventes
+              </p>
+              <p className='text-[11px] text-gray-500 mt-0.5'>
+                Rapport sur une période : leads, clients convertis et chiffre
+                d’affaires. Les filtres entreprise / commercial ci-dessus
+                s’appliquent aussi.
+              </p>
+            </div>
+            <div className='flex flex-col sm:flex-row flex-wrap gap-3 items-end rounded-xl border border-gray-100 bg-bgGray/60 p-3'>
               <div className='flex flex-col gap-1'>
                 <label className='text-[11px] text-gray-500'>Du</label>
                 <input
                   type='date'
                   value={reportFrom}
                   onChange={(e) => setReportFrom(e.target.value)}
-                  className='rounded-lg border border-gray-200 px-2 py-1.5 text-xs'
+                  className='rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs'
                 />
               </div>
               <div className='flex flex-col gap-1'>
@@ -440,29 +503,38 @@ function StatsPageInner() {
                   type='date'
                   value={reportTo}
                   onChange={(e) => setReportTo(e.target.value)}
-                  className='rounded-lg border border-gray-200 px-2 py-1.5 text-xs'
+                  className='rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs'
                 />
               </div>
-              <div className='flex flex-col gap-1'>
-                <label className='text-[11px] text-gray-500'>
+              <div className='flex flex-col gap-1 min-w-[160px] flex-1 sm:flex-none'>
+                <label
+                  className='text-[11px] text-gray-500'
+                  htmlFor='stats-report-source'
+                >
                   Source (optionnel)
                 </label>
-                <input
-                  type='text'
+                <select
+                  id='stats-report-source'
                   value={reportSource}
                   onChange={(e) => setReportSource(e.target.value)}
-                  placeholder='Ex: Site web'
-                  className='rounded-lg border border-gray-200 px-2 py-1.5 text-xs min-w-[120px]'
-                />
+                  className='rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs w-full'
+                >
+                  <option value=''>Toutes les sources</option>
+                  {DEFAULT_LEAD_SOURCES.map((src) => (
+                    <option key={src} value={src}>
+                      {src}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div className='flex gap-2'>
+              <div className='flex gap-2 w-full sm:w-auto'>
                 <button
                   type='button'
                   onClick={handleGenerateReport}
                   disabled={reportLoading || exportLoading}
-                  className='px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 disabled:opacity-60'
+                  className='flex-1 sm:flex-none px-3 py-1.5 rounded-full bg-primary text-white text-xs font-medium shadow-neu hover:brightness-105 disabled:opacity-60'
                 >
-                  {reportLoading ? 'Génération…' : 'Générer le rapport'}
+                  {reportLoading ? 'Génération…' : 'Générer'}
                 </button>
                 <button
                   type='button'
@@ -473,9 +545,9 @@ function StatsPageInner() {
                     !reportFrom.trim() ||
                     !reportTo.trim()
                   }
-                  className='px-3 py-1.5 rounded-lg border border-primary/30 text-primary text-xs font-medium hover:bg-primary/5 disabled:opacity-60'
+                  className='flex-1 sm:flex-none px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 text-xs font-medium shadow-sm hover:bg-gray-50 disabled:opacity-60'
                 >
-                  {exportLoading ? 'Export…' : 'Exporter'}
+                  {exportLoading ? 'Export…' : 'Exporter Excel'}
                 </button>
               </div>
             </div>
@@ -484,20 +556,20 @@ function StatsPageInner() {
             )}
             {report && (
               <>
-                <div className='grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2'>
-                  <div className='rounded-xl border border-gray-100 bg-white p-3'>
+                <div className='grid grid-cols-1 sm:grid-cols-3 gap-3 mt-1'>
+                  <div className='rounded-xl border border-gray-100 bg-bgGray/40 p-3'>
                     <span className='text-[11px] text-gray-500'>Leads</span>
                     <p className='text-lg font-semibold text-primary'>
                       {report.global.nbLeadsTotal}
                     </p>
                   </div>
-                  <div className='rounded-xl border border-gray-100 bg-white p-3'>
+                  <div className='rounded-xl border border-gray-100 bg-bgGray/40 p-3'>
                     <span className='text-[11px] text-gray-500'>Clients</span>
                     <p className='text-lg font-semibold text-primary'>
                       {report.global.nbClientsTotal}
                     </p>
                   </div>
-                  <div className='rounded-xl border border-gray-100 bg-white p-3'>
+                  <div className='rounded-xl border border-gray-100 bg-bgGray/40 p-3'>
                     <span className='text-[11px] text-gray-500'>CA</span>
                     <p className='text-lg font-semibold text-primary'>
                       {report.global.caTotal.toLocaleString('fr-FR', {
@@ -508,75 +580,77 @@ function StatsPageInner() {
                     </p>
                   </div>
                 </div>
-                <div className='overflow-x-auto'>
+                <div>
                   <p className='text-[11px] font-medium text-gray-600 mb-2'>
                     Par commercial
                   </p>
-                  <table className='min-w-full text-xs'>
-                    <thead className='text-gray-500 border-b border-gray-100'>
-                      <tr>
-                        <th className='py-2 text-left font-medium'>
-                          Commercial
-                        </th>
-                        <th className='py-2 text-right font-medium'>Leads</th>
-                        <th className='py-2 text-right font-medium'>Clients</th>
-                        <th className='py-2 text-right font-medium'>CA</th>
-                        <th className='py-2 text-right font-medium'>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className='hover:bg-transparent'>
+                        <TableHead>Commercial</TableHead>
+                        <TableHead className='text-right'>Leads</TableHead>
+                        <TableHead className='text-right'>Clients</TableHead>
+                        <TableHead className='text-right'>CA</TableHead>
+                        <TableHead className='text-right'>
                           Taux conversion
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className='text-gray-700'>
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {report.byUser.map((r) => (
-                        <tr
-                          key={r.userId}
-                          className='border-b border-gray-50 hover:bg-gray-50/60'
-                        >
-                          <td className='py-2 font-medium'>{r.userName}</td>
-                          <td className='py-2 text-right'>{r.nbLeads}</td>
-                          <td className='py-2 text-right'>{r.nbClients}</td>
-                          <td className='py-2 text-right'>
+                        <TableRow key={r.userId}>
+                          <TableCell className='text-primary font-medium'>
+                            {r.userName}
+                          </TableCell>
+                          <TableCell className='text-right'>
+                            {r.nbLeads}
+                          </TableCell>
+                          <TableCell className='text-right'>
+                            {r.nbClients}
+                          </TableCell>
+                          <TableCell className='text-right'>
                             {r.caTotal.toLocaleString('fr-FR', {
                               style: 'currency',
                               currency: 'XOF',
                               maximumFractionDigits: 0,
                             })}
-                          </td>
-                          <td className='py-2 text-right'>
+                          </TableCell>
+                          <TableCell className='text-right'>
                             {r.conversionRate.toFixed(1)} %
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
-                <div className='overflow-x-auto'>
+                <div>
                   <p className='text-[11px] font-medium text-gray-600 mb-2'>
                     Par source
                   </p>
-                  <table className='min-w-full text-xs'>
-                    <thead className='text-gray-500 border-b border-gray-100'>
-                      <tr>
-                        <th className='py-2 text-left font-medium'>Source</th>
-                        <th className='py-2 text-right font-medium'>Leads</th>
-                        <th className='py-2 text-right font-medium'>Clients</th>
-                      </tr>
-                    </thead>
-                    <tbody className='text-gray-700'>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className='hover:bg-transparent'>
+                        <TableHead>Source</TableHead>
+                        <TableHead className='text-right'>Leads</TableHead>
+                        <TableHead className='text-right'>Clients</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {report.bySource.map((r, i) => (
-                        <tr
-                          key={i}
-                          className='border-b border-gray-50 hover:bg-gray-50/60'
-                        >
-                          <td className='py-2 font-medium'>
+                        <TableRow key={i}>
+                          <TableCell className='font-medium'>
                             {r.source ?? 'Inconnu'}
-                          </td>
-                          <td className='py-2 text-right'>{r.nbLeads}</td>
-                          <td className='py-2 text-right'>{r.nbClients}</td>
-                        </tr>
+                          </TableCell>
+                          <TableCell className='text-right'>
+                            {r.nbLeads}
+                          </TableCell>
+                          <TableCell className='text-right'>
+                            {r.nbClients}
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               </>
             )}
@@ -585,18 +659,23 @@ function StatsPageInner() {
       )}
 
       {isManagerOrAdmin && (
-        <section className='mt-4'>
-          <NeumoCard className='p-5 bg-linear-to-br from-violet-50 via-indigo-50/70 to-primary/5 border border-indigo-100 shadow-neu-soft flex flex-col gap-4'>
+        <section id='stats-objectifs' className='mt-6 scroll-mt-4'>
+          <NeumoCard className='p-5 bg-white border border-gray-100 shadow-neu-soft flex flex-col gap-4'>
             <div className='flex items-center justify-between gap-2'>
-              <p className='text-xs font-semibold text-primary'>
-                Objectifs en cours par commercial
-              </p>
+              <div>
+                <p className='text-sm font-semibold text-gray-800'>
+                  Objectifs en cours par commercial
+                </p>
+                <p className='text-[11px] text-gray-500 mt-0.5'>
+                  Progression conversions et CA sur la période active.
+                </p>
+              </div>
               {loadingCurrentGoals && (
                 <span className='text-[11px] text-gray-400'>Chargement…</span>
               )}
             </div>
             {currentGoalsByUser.length === 0 && !loadingCurrentGoals ? (
-              <p className='text-[11px] text-gray-100'>
+              <p className='text-[11px] text-gray-500'>
                 Aucun objectif en cours pour cette période dans votre équipe.
               </p>
             ) : (
@@ -621,15 +700,15 @@ function StatsPageInner() {
 
                   const cardBg =
                     idx % 3 === 0
-                      ? 'from-white/90 via-indigo-50/80 to-violet-50/90 border-indigo-100/70'
+                      ? 'from-white via-sky-50/80 to-slate-50 border-sky-100/80'
                       : idx % 3 === 1
-                        ? 'from-white/90 via-emerald-50/80 to-teal-50/90 border-emerald-100/70'
-                        : 'from-white/90 via-amber-50/80 to-orange-50/90 border-amber-100/70';
+                        ? 'from-white via-emerald-50/70 to-teal-50/80 border-emerald-100/70'
+                        : 'from-white via-amber-50/70 to-orange-50/80 border-amber-100/70';
 
                   return (
                     <div
                       key={g.user.id}
-                      className={`flex flex-col gap-3 text-[11px] rounded-2xl border shadow-neu-soft bg-linear-to-br ${cardBg} p-3`}
+                      className={`flex flex-col gap-3 text-[11px] rounded-2xl border shadow-sm bg-linear-to-br ${cardBg} p-3`}
                     >
                       <div className='flex flex-col'>
                         <span className='font-semibold text-primary'>
@@ -837,107 +916,102 @@ function StatsPageInner() {
                 ? 'Objectifs par commercial et par période'
                 : 'Mes objectifs (toutes périodes)'}
             </p>
-            <div className='overflow-x-auto'>
-              <table className='min-w-full text-xs'>
-                <thead className='text-gray-500 border-b border-gray-100'>
-                  <tr>
+            <Table>
+              <TableHeader>
+                <TableRow className='hover:bg-transparent'>
+                  {isManagerOrAdmin && <TableHead>Commercial</TableHead>}
+                  <TableHead>Période</TableHead>
+                  <TableHead className='text-right'>
+                    Conversions (réalisé / objectif)
+                  </TableHead>
+                  <TableHead className='text-right'>
+                    CA (réalisé / objectif)
+                  </TableHead>
+                  {isManagerOrAdmin && (
+                    <TableHead className='text-right'>Actions</TableHead>
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {goals.map((g) => (
+                  <TableRow key={g.id}>
                     {isManagerOrAdmin && (
-                      <th className='py-2 text-left font-medium'>Commercial</th>
+                      <TableCell className='text-primary font-medium'>
+                        {g.user.name}
+                      </TableCell>
                     )}
-                    <th className='py-2 text-left font-medium'>Période</th>
-                    <th className='py-2 text-right font-medium'>
-                      Conversions (réalisé / objectif)
-                    </th>
-                    <th className='py-2 text-right font-medium'>
-                      CA (réalisé / objectif)
-                    </th>
+                    <TableCell>{g.periodLabel}</TableCell>
+                    <TableCell className='text-right'>
+                      <span
+                        className={
+                          g.realizedConversions >= g.targetConversions
+                            ? 'text-emerald-600 font-medium'
+                            : ''
+                        }
+                      >
+                        {g.realizedConversions}
+                      </span>
+                      <span className='text-gray-400'> / </span>
+                      <span>{g.targetConversions}</span>
+                    </TableCell>
+                    <TableCell className='text-right'>
+                      <span
+                        className={
+                          g.realizedRevenue >= g.targetRevenue
+                            ? 'text-emerald-600 font-medium'
+                            : ''
+                        }
+                      >
+                        {g.realizedRevenue.toLocaleString('fr-FR', {
+                          style: 'currency',
+                          currency: 'XOF',
+                          maximumFractionDigits: 0,
+                        })}
+                      </span>
+                      <span className='text-gray-400'> / </span>
+                      <span>
+                        {g.targetRevenue.toLocaleString('fr-FR', {
+                          style: 'currency',
+                          currency: 'XOF',
+                          maximumFractionDigits: 0,
+                        })}
+                      </span>
+                    </TableCell>
                     {isManagerOrAdmin && (
-                      <th className='py-2 text-right font-medium'>Actions</th>
+                      <TableCell className='text-right'>
+                        {(() => {
+                          const now = new Date();
+                          const end = new Date(g.periodEnd);
+                          const periodFinished = now > end;
+                          const conversionsNotReached =
+                            g.targetConversions > 0 &&
+                            g.realizedConversions < g.targetConversions;
+                          const revenueNotReached =
+                            g.targetRevenue > 0 &&
+                            g.realizedRevenue < g.targetRevenue;
+                          const canRenew =
+                            periodFinished &&
+                            (conversionsNotReached || revenueNotReached);
+
+                          if (!canRenew) return null;
+
+                          return (
+                            <button
+                              type='button'
+                              onClick={() => handleRenew(g)}
+                              disabled={renewingId === g.id}
+                              className='inline-flex items-center px-3 py-1.5 rounded-full bg-primary/10 text-primary text-[11px] font-medium hover:bg-primary/15 disabled:opacity-50'
+                            >
+                              Reconduire
+                            </button>
+                          );
+                        })()}
+                      </TableCell>
                     )}
-                  </tr>
-                </thead>
-                <tbody className='text-gray-700'>
-                  {goals.map((g) => (
-                    <tr
-                      key={g.id}
-                      className='border-b border-gray-50 hover:bg-gray-50/60'
-                    >
-                      {isManagerOrAdmin && (
-                        <td className='py-2.5 font-medium'>{g.user.name}</td>
-                      )}
-                      <td className='py-2.5'>{g.periodLabel}</td>
-                      <td className='py-2.5 text-right'>
-                        <span
-                          className={
-                            g.realizedConversions >= g.targetConversions
-                              ? 'text-emerald-600 font-medium'
-                              : ''
-                          }
-                        >
-                          {g.realizedConversions}
-                        </span>
-                        <span className='text-gray-400'> / </span>
-                        <span>{g.targetConversions}</span>
-                      </td>
-                      <td className='py-2.5 text-right'>
-                        <span
-                          className={
-                            g.realizedRevenue >= g.targetRevenue
-                              ? 'text-emerald-600 font-medium'
-                              : ''
-                          }
-                        >
-                          {g.realizedRevenue.toLocaleString('fr-FR', {
-                            style: 'currency',
-                            currency: 'XOF',
-                            maximumFractionDigits: 0,
-                          })}
-                        </span>
-                        <span className='text-gray-400'> / </span>
-                        <span>
-                          {g.targetRevenue.toLocaleString('fr-FR', {
-                            style: 'currency',
-                            currency: 'XOF',
-                            maximumFractionDigits: 0,
-                          })}
-                        </span>
-                      </td>
-                      {isManagerOrAdmin && (
-                        <td className='py-2.5 text-right'>
-                          {(() => {
-                            const now = new Date();
-                            const end = new Date(g.periodEnd);
-                            const periodFinished = now > end;
-                            const conversionsNotReached =
-                              g.targetConversions > 0 &&
-                              g.realizedConversions < g.targetConversions;
-                            const revenueNotReached =
-                              g.targetRevenue > 0 &&
-                              g.realizedRevenue < g.targetRevenue;
-                            const canRenew =
-                              periodFinished &&
-                              (conversionsNotReached || revenueNotReached);
-
-                            if (!canRenew) return null;
-
-                            return (
-                              <button
-                                type='button'
-                                onClick={() => handleRenew(g)}
-                                disabled={renewingId === g.id}
-                                className='inline-flex items-center px-3 py-1.5 rounded-full bg-primary/10 text-primary text-[11px] font-medium hover:bg-primary/15 disabled:opacity-50'
-                              >
-                                Reconduire
-                              </button>
-                            );
-                          })()}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </NeumoCard>
         </>
       )}

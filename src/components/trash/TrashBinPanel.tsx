@@ -20,6 +20,15 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableEmpty,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 type TrashListResponse = {
   items: TrashItemDto[];
@@ -332,77 +341,73 @@ export default function TrashBinPanel() {
 
         {!loading && !error && data && data.items.length > 0 && (
           <>
-            <div className='overflow-x-auto'>
-              <table className='min-w-full text-xs'>
-                <thead className='text-gray-500 border-b border-gray-100'>
-                  <tr>
-                    <th className='py-2 text-left font-medium'>Type</th>
-                    <th className='py-2 text-left font-medium'>Nom</th>
+            <Table>
+              <TableHeader>
+                <TableRow className='hover:bg-transparent'>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Nom</TableHead>
+                  {hasGroupScope && <TableHead>Société</TableHead>}
+                  <TableHead>Supprimé le</TableHead>
+                  <TableHead>Par</TableHead>
+                  <TableHead className='text-right'>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.items.map((item) => (
+                  <TableRow key={`${item.entityType}-${item.id}`}>
+                    <TableCell>
+                      <Badge
+                        variant='outline'
+                        className={ENTITY_BADGE_CLASS[item.entityType]}
+                      >
+                        {TRASH_ENTITY_LABELS[item.entityType]}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className='text-primary font-medium'>
+                      {item.label}
+                    </TableCell>
                     {hasGroupScope && (
-                      <th className='py-2 text-left font-medium'>Société</th>
+                      <TableCell>
+                        {item.companyName ?? <TableEmpty />}
+                      </TableCell>
                     )}
-                    <th className='py-2 text-left font-medium'>Supprimé le</th>
-                    <th className='py-2 text-left font-medium'>Par</th>
-                    <th className='py-2 text-right font-medium'>Actions</th>
-                  </tr>
-                </thead>
-                <tbody className='divide-y divide-gray-50'>
-                  {data.items.map((item) => (
-                    <tr key={`${item.entityType}-${item.id}`}>
-                      <td className='py-2.5 pr-2'>
-                        <Badge
+                    <TableCell className='whitespace-nowrap'>
+                      {formatDateTime(item.deletedAt)}
+                    </TableCell>
+                    <TableCell>
+                      {item.deletedBy?.name ?? <TableEmpty />}
+                    </TableCell>
+                    <TableCell className='text-right whitespace-nowrap'>
+                      <div className='flex justify-end gap-1.5'>
+                        <Button
+                          type='button'
+                          size='sm'
                           variant='outline'
-                          className={ENTITY_BADGE_CLASS[item.entityType]}
+                          className='h-7 text-[11px] gap-1'
+                          onClick={() =>
+                            setPending({ type: 'restore', item })
+                          }
                         >
-                          {TRASH_ENTITY_LABELS[item.entityType]}
-                        </Badge>
-                      </td>
-                      <td className='py-2.5 pr-2 font-medium text-gray-800'>
-                        {item.label}
-                      </td>
-                      {hasGroupScope && (
-                        <td className='py-2.5 pr-2 text-gray-600'>
-                          {item.companyName ?? '—'}
-                        </td>
-                      )}
-                      <td className='py-2.5 pr-2 text-gray-600 whitespace-nowrap'>
-                        {formatDateTime(item.deletedAt)}
-                      </td>
-                      <td className='py-2.5 pr-2 text-gray-600'>
-                        {item.deletedBy?.name ?? '—'}
-                      </td>
-                      <td className='py-2.5 text-right whitespace-nowrap'>
-                        <div className='flex justify-end gap-1.5'>
-                          <Button
-                            type='button'
-                            size='sm'
-                            variant='outline'
-                            className='h-7 text-[11px] gap-1'
-                            onClick={() =>
-                              setPending({ type: 'restore', item })
-                            }
-                          >
-                            <RotateCcw className='w-3 h-3' />
-                            Restaurer
-                          </Button>
-                          <Button
-                            type='button'
-                            size='sm'
-                            variant='destructive'
-                            className='h-7 text-[11px]'
-                            onClick={() =>
-                              setPending({ type: 'purge', item })
-                            }
-                          >
-                            Supprimer
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                          <RotateCcw className='w-3 h-3' />
+                          Restaurer
+                        </Button>
+                        <Button
+                          type='button'
+                          size='sm'
+                          variant='destructive'
+                          className='h-7 text-[11px]'
+                          onClick={() =>
+                            setPending({ type: 'purge', item })
+                          }
+                        >
+                          Supprimer
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
 
             {data.totalPages > 1 && (
               <div className='flex items-center justify-between pt-2 border-t border-gray-100'>

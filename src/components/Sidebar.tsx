@@ -2,40 +2,103 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import type { FrontendRole } from '@/contexts/AuthContext';
-import { GROUP_NAV_ROLES } from '@/lib/roles';
+import { getRoleLabel, GROUP_NAV_ROLES, normalizeFrontendRole } from '@/lib/roles';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
-import { BarChart3, BookOpen, Building2, CalendarDays, LayoutGrid, Package, Settings, Trash2, UserPlus, Users } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import {
+  BarChart3,
+  BookOpen,
+  Building2,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  LayoutGrid,
+  Package,
+  Settings,
+  Trash2,
+  User,
+  UserPlus,
+  Users,
+  FileText,
+} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+
+export type SidebarSectionId = 'principal' | 'pilotage' | 'systeme';
 
 export type SidebarItemDef = {
   icon: typeof LayoutGrid;
   label: string;
   href: string;
+  section: SidebarSectionId;
   /** Si défini, seuls ces rôles voient l’entrée (AGENT ne voit pas Utilisateurs ni Paramètres). */
   allowedRoles?: FrontendRole[];
 };
 
+const SECTION_LABELS: Record<SidebarSectionId, string> = {
+  principal: 'Principal',
+  pilotage: 'Pilotage',
+  systeme: 'Système',
+};
+
+const SECTION_ORDER: SidebarSectionId[] = ['principal', 'pilotage', 'systeme'];
+
 // Les groupes de routes entre parenthèses (ex: (dashboard)) ne font pas partie de l'URL publique.
 export const sidebarItems: SidebarItemDef[] = [
-  { icon: LayoutGrid, label: 'Dashboard', href: '/' },
-  { icon: CalendarDays, label: 'Agenda', href: '/agenda' },
-  { icon: UserPlus, label: 'Leads', href: '/leads' },
-  { icon: BarChart3, label: 'Statistiques', href: '/stats', allowedRoles: [...GROUP_NAV_ROLES] },
-  { icon: Package, label: 'Produits et services', href: '/products-services', allowedRoles: [...GROUP_NAV_ROLES] },
-  { icon: Building2, label: 'Clients', href: '/clients' },
-  { icon: Trash2, label: 'Corbeille', href: '/corbeille', allowedRoles: [...GROUP_NAV_ROLES] },
-  { icon: BookOpen, label: 'Guide', href: '/guide' },
-  { icon: Users, label: 'Utilisateurs', href: '/users', allowedRoles: [...GROUP_NAV_ROLES] },
-  { icon: Settings, label: 'Paramètres', href: '/settings', allowedRoles: [...GROUP_NAV_ROLES] },
+  { icon: LayoutGrid, label: 'Dashboard', href: '/', section: 'principal' },
+  { icon: CalendarDays, label: 'Agenda', href: '/agenda', section: 'principal' },
+  { icon: UserPlus, label: 'Gestion Prospects', href: '/leads', section: 'principal' },
+  { icon: Building2, label: 'Gestion Clients', href: '/clients', section: 'principal' },
+  {
+    icon: BarChart3,
+    label: 'Statistiques',
+    href: '/stats',
+    section: 'pilotage',
+    allowedRoles: [...GROUP_NAV_ROLES],
+  },
+  {
+    icon: FileText,
+    label: 'Rapport',
+    href: '/rapport',
+    section: 'pilotage',
+    allowedRoles: [...GROUP_NAV_ROLES],
+  },
+  {
+    icon: Package,
+    label: 'Produits et services',
+    href: '/products-services',
+    section: 'pilotage',
+    allowedRoles: [...GROUP_NAV_ROLES],
+  },
+  { icon: BookOpen, label: 'Guide', href: '/guide', section: 'systeme' },
+  {
+    icon: Trash2,
+    label: 'Corbeille',
+    href: '/corbeille',
+    section: 'systeme',
+    allowedRoles: [...GROUP_NAV_ROLES],
+  },
+  {
+    icon: Users,
+    label: 'Utilisateurs',
+    href: '/users',
+    section: 'systeme',
+    allowedRoles: [...GROUP_NAV_ROLES],
+  },
+  {
+    icon: Settings,
+    label: 'Paramètres',
+    href: '/settings',
+    section: 'systeme',
+    allowedRoles: [...GROUP_NAV_ROLES],
+  },
 ];
 
 /** Retourne les entrées de menu visibles pour le rôle (AGENT n’a pas Utilisateurs ni Paramètres). */
 export function getSidebarItemsForRole(role: FrontendRole | null): SidebarItemDef[] {
   if (!role) return sidebarItems.filter((i) => !i.allowedRoles?.length);
   return sidebarItems.filter(
-    (item) => !item.allowedRoles || item.allowedRoles.includes(role)
+    (item) => !item.allowedRoles || item.allowedRoles.includes(role),
   );
 }
 
@@ -56,20 +119,42 @@ export function getSecondaryNavItemsForRole(
   return getSidebarItemsForRole(role).filter((item) => !primary.has(item.href));
 }
 
+function isNavItemActive(pathname: string, href: string): boolean {
+  if (href === '/') return pathname === '/';
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map((s) => s[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+function roleDisplayLabel(role: string | undefined): string {
+  if (!role) return '';
+  const normalized = normalizeFrontendRole(role);
+  if (normalized === 'admin') return 'Administrateur';
+  return getRoleLabel(normalized);
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
   const items = getSidebarItemsForRole(user?.role ?? null);
 
-  const [expanded, setExpanded] = useState<boolean | null>(null);
+  const [expanded, setExpanded] = useState(true);
 
-  // Optionnel : persistance dans localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
       const stored = window.localStorage.getItem('crm_sidebar_expanded');
-      setExpanded(stored === 'true');
+      if (stored === 'true' || stored === 'false') {
+        setExpanded(stored === 'true');
+      }
     } catch {
       // silencieux
     }
@@ -78,11 +163,22 @@ export default function Sidebar() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
-      window.localStorage.setItem('crm_sidebar_expanded', expanded ? 'true' : 'false');
+      window.localStorage.setItem(
+        'crm_sidebar_expanded',
+        expanded ? 'true' : 'false',
+      );
     } catch {
       // silencieux
     }
   }, [expanded]);
+
+  const sections = useMemo(() => {
+    return SECTION_ORDER.map((id) => ({
+      id,
+      label: SECTION_LABELS[id],
+      items: items.filter((item) => item.section === id),
+    })).filter((section) => section.items.length > 0);
+  }, [items]);
 
   const handleNavigate = (href: string) => {
     if (href && href !== pathname) {
@@ -90,109 +186,189 @@ export default function Sidebar() {
     }
   };
 
-  // Ne rien rendre tant que l'état initial (localStorage) n'est pas résolu
-  if (expanded === null) return null;
+  const toggleExpanded = () => setExpanded((prev) => !prev);
 
   return (
     <aside
-      className={`hidden sm:flex flex-col justify-between py-6 bg-[#f5f5ff] border-r border-primary/10 transition-all duration-200 sticky top-0 h-screen ${
-        expanded ? 'w-56 px-4' : 'w-16 px-3'
+      className={`hidden sm:flex flex-col bg-[#f5f5ff] border-r border-primary/10 transition-[width,padding] duration-200 sticky top-0 h-screen ${
+        expanded ? 'w-56 px-3' : 'w-17 px-2'
       }`}
+      aria-label='Navigation principale'
     >
-      <div className='flex flex-col gap-6'>
-        <div className='flex items-center justify-between gap-2'>
-          <button
-            type='button'
-            onClick={() => handleNavigate('/')}
-            className={`h-9 rounded-2xl shadow-neu flex items-center justify-center gap-2 bg-white border border-sky-200/80 text-sky-900 text-[11px] font-semibold tracking-wide ${
-              expanded ? 'px-2.5' : 'px-0 w-9'
-            }`}
-            aria-label='KpiTracker'
-          >
-            <Image
-              src='/kpitracker-mark.svg'
-              alt=''
-              width={28}
-              height={28}
-              className='h-7 w-7 shrink-0'
-            />
-            {expanded && <span className='truncate'>KpiTracker</span>}
-          </button>
-          <button
-            type='button'
-            onClick={() => setExpanded((prev) => !prev)}
-            className='ml-1 inline-flex items-center justify-center w-7 h-7 rounded-xl bg-bgGray text-gray-600 hover:text-primary shadow-neu'
-            aria-label={expanded ? 'Réduire le menu' : 'Développer le menu'}
-          >
-            <span className='text-xs'>{expanded ? '«' : '»'}</span>
-          </button>
-        </div>
+      {/* En-tête marque + collapse */}
+      <div
+        className={`flex shrink-0 items-center gap-1.5 pt-5 pb-4 ${
+          expanded ? 'justify-between px-1' : 'flex-col gap-2'
+        }`}
+      >
+        <button
+          type='button'
+          onClick={() => handleNavigate('/')}
+          className={`flex h-10 items-center gap-2 rounded-2xl border border-sky-200/70 bg-white text-sky-900 shadow-neu-soft transition hover:border-sky-300 ${
+            expanded ? 'min-w-0 flex-1 px-2.5' : 'w-10 justify-center px-0'
+          }`}
+          aria-label='Accueil KpiTracker'
+        >
+          <Image
+            src='/kpitracker-mark.png'
+            alt=''
+            width={28}
+            height={28}
+            className='h-7 w-7 shrink-0'
+          />
+          {expanded && (
+            <span className='truncate text-[12px] font-semibold tracking-wide'>
+              KpiTracker
+            </span>
+          )}
+        </button>
 
-        <nav
-          className={`flex flex-col gap-4 ${
-            expanded ? 'items-stretch' : 'items-center'
+        <button
+          type='button'
+          onClick={toggleExpanded}
+          className='inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white text-gray-500 shadow-neu-soft transition hover:text-primary'
+          aria-label={expanded ? 'Réduire le menu' : 'Développer le menu'}
+          aria-expanded={expanded}
+        >
+          {expanded ? (
+            <ChevronLeft className='h-4 w-4' strokeWidth={2} />
+          ) : (
+            <ChevronRight className='h-4 w-4' strokeWidth={2} />
+          )}
+        </button>
+      </div>
+
+      {/* Navigation scrollable */}
+      <nav
+        className={`flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden pb-3 ${
+          expanded ? 'px-0.5' : 'items-center'
+        }`}
+      >
+        {sections.map((section) => (
+          <div
+            key={section.id}
+            className={`flex flex-col gap-1 ${expanded ? '' : 'items-center'}`}
+          >
+            {expanded ? (
+              <p className='px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400'>
+                {section.label}
+              </p>
+            ) : (
+              <div
+                className='mb-0.5 h-px w-6 bg-primary/15'
+                aria-hidden
+              />
+            )}
+
+            {section.items.map((item) => {
+              const isActive = isNavItemActive(pathname, item.href);
+              const Icon = item.icon;
+
+              return (
+                <div
+                  key={item.href}
+                  className='group relative flex w-full items-center justify-center'
+                >
+                  <motion.button
+                    whileHover={{ scale: expanded ? 1.01 : 1.05 }}
+                    whileTap={{ scale: 0.98 }}
+                    type='button'
+                    onClick={() => handleNavigate(item.href)}
+                    className={`relative flex transition-colors ${
+                      expanded
+                        ? 'w-full items-center gap-2.5 rounded-xl px-2.5 py-2'
+                        : 'h-10 w-10 items-center justify-center rounded-xl'
+                    } ${
+                      isActive
+                        ? 'bg-primary text-white shadow-neu'
+                        : 'text-gray-600 hover:bg-white/80 hover:text-primary'
+                    }`}
+                    aria-label={item.label}
+                    aria-current={isActive ? 'page' : undefined}
+                    title={!expanded ? item.label : undefined}
+                  >
+                    {expanded && isActive && (
+                      <span
+                        className='absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-white/90'
+                        aria-hidden
+                      />
+                    )}
+                    <Icon
+                      className='h-4 w-4 shrink-0'
+                      strokeWidth={isActive ? 2.25 : 1.85}
+                    />
+                    {expanded && (
+                      <span
+                        className={`min-w-0 truncate text-[12px] font-medium ${
+                          isActive ? 'text-white' : 'text-gray-700'
+                        }`}
+                      >
+                        {item.label}
+                      </span>
+                    )}
+                  </motion.button>
+
+                  {!expanded && (
+                    <span
+                      className='pointer-events-none absolute left-full z-50 ml-2.5 whitespace-nowrap rounded-lg bg-gray-800 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100'
+                      role='tooltip'
+                    >
+                      {item.label}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </nav>
+
+      {/* Pied profil */}
+      {user && (
+        <div
+          className={`shrink-0 border-t border-primary/10 py-3 ${
+            expanded ? 'px-0.5' : 'flex justify-center'
           }`}
         >
-          {items.map((item) => {
-            const isActive =
-              pathname === item.href || pathname.startsWith(`${item.href}/`);
-
-            const buttonContent = (
-              <>
-                <item.icon className='w-4 h-4 shrink-0' />
-                {expanded && (
-                  <span
-                    className={`text-[11px] font-medium truncate ${
-                      isActive ? 'text-white' : 'text-gray-700'
-                    }`}
-                  >
-                    {item.label}
-                  </span>
-                )}
-              </>
-            );
-
-            const button = (
-              <motion.button
-                whileHover={{ scale: 1.05, y: -1 }}
-                type='button'
-                onClick={() => handleNavigate(item.href)}
-                className={`rounded-2xl flex transition-colors ${
-                  expanded
-                    ? 'w-full px-3 py-2 gap-2 items-center justify-start'
-                    : 'w-9 h-9 items-center justify-center'
-                } ${
-                  isActive
-                    ? 'bg-primary text-white shadow-neu'
-                    : 'bg-bgGray text-gray-500 shadow-neu hover:text-primary'
-                }`}
-                aria-label={item.label}
+          <button
+            type='button'
+            onClick={() => handleNavigate('/profile')}
+            className={`group relative flex items-center gap-2.5 rounded-xl transition hover:bg-white/80 ${
+              expanded
+                ? 'w-full px-2 py-2'
+                : 'h-10 w-10 justify-center'
+            } ${
+              isNavItemActive(pathname, '/profile')
+                ? 'bg-white shadow-neu-soft'
+                : ''
+            }`}
+            aria-label='Mon profil'
+            title={!expanded ? user.name : undefined}
+          >
+            <span className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary'>
+              {user.name ? getInitials(user.name) : <User className='h-4 w-4' />}
+            </span>
+            {expanded && (
+              <span className='min-w-0 flex-1 text-left'>
+                <span className='block truncate text-[12px] font-semibold text-gray-800'>
+                  {user.name}
+                </span>
+                <span className='block truncate text-[10px] text-gray-400'>
+                  {roleDisplayLabel(user.role)}
+                </span>
+              </span>
+            )}
+            {!expanded && (
+              <span
+                className='pointer-events-none absolute left-full z-50 ml-2.5 whitespace-nowrap rounded-lg bg-gray-800 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100'
+                role='tooltip'
               >
-                {buttonContent}
-              </motion.button>
-            );
-
-            const showTooltip = !expanded;
-
-            return (
-              <div
-                key={item.label}
-                className='group relative flex items-center justify-center'
-              >
-                {button}
-                {showTooltip && (
-                  <span
-                    className='pointer-events-none absolute left-full ml-3 z-50 px-2.5 py-1.5 rounded-lg bg-gray-800 text-white text-xs font-medium whitespace-nowrap opacity-0 shadow-md transition-opacity duration-200 group-hover:opacity-100'
-                    role='tooltip'
-                  >
-                    {item.label}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </nav>
-      </div>
+                {user.name}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
     </aside>
   );
 }

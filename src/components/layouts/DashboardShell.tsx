@@ -1,5 +1,6 @@
 'use client';
 
+import AppFooter from '@/components/layouts/AppFooter';
 import MobileBottomNav from '@/components/MobileBottomNav';
 import MobileHeader, { MOBILE_HEADER_OFFSET } from '@/components/MobileHeader';
 import Navbar from '@/components/Navbar';
@@ -14,11 +15,17 @@ type DashboardShellProps = {
   children: ReactNode;
   /** Masquer le pied de page (ex. pages très longues). */
   hideFooter?: boolean;
+  /** Titre affiché dans la barre supérieure (desktop). */
+  title?: string;
+  /** Sous-titre / fil d’Ariane sous le titre. */
+  subtitle?: string;
 };
 
 export default function DashboardShell({
   children,
   hideFooter = false,
+  title,
+  subtitle,
 }: DashboardShellProps) {
   return (
     <div className='min-h-screen flex flex-col sm:flex-row bg-bgGray'>
@@ -28,13 +35,9 @@ export default function DashboardShell({
       <main
         className={`flex-1 flex flex-col max-w-6xl mx-auto px-4 md:px-8 py-3 sm:py-4 md:py-8 gap-4 w-full ${MOBILE_HEADER_OFFSET} ${MOBILE_BOTTOM_NAV_PADDING}`}
       >
-        <Navbar />
+        <Navbar title={title} subtitle={subtitle} />
         {children}
-        {!hideFooter && (
-          <footer className='mt-2 text-center text-[11px] text-gray-400 sm:mb-0 mb-1'>
-            © 2026 by Appatam
-          </footer>
-        )}
+        {!hideFooter && <AppFooter compact />}
       </main>
 
       <MobileBottomNav />

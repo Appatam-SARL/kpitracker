@@ -10,7 +10,12 @@ import {
   TotalProspectsKpiCard,
   type DonutDatum,
 } from '@/components/ui/chart-pie-donut-generic';
-import { Briefcase, MapPin } from 'lucide-react';
+import {
+  Briefcase,
+  Building2,
+  MapPin,
+  Radio,
+} from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 type LeadDemographicsSectionProps = {
@@ -19,11 +24,21 @@ type LeadDemographicsSectionProps = {
   scopeLabel?: string;
 };
 
+function isPlaceholderLabel(label: string): boolean {
+  return (
+    label === LABEL_NONE ||
+    label === 'Non déterminé' ||
+    label === 'Non renseigné'
+  );
+}
+
 function hasMeaningfulBarRows(rows: DonutDatum[]): boolean {
   const withData = rows.filter((r) => r.count > 0);
   if (withData.length === 0) return false;
-  if (withData.length === 1 && withData[0].label === LABEL_NONE) return false;
-  return true;
+  if (withData.length === 1 && isPlaceholderLabel(withData[0].label)) {
+    return false;
+  }
+  return withData.some((r) => !isPlaceholderLabel(r.label));
 }
 
 function EmptyBarPlaceholder({ message }: { message: string }) {
@@ -36,7 +51,7 @@ function EmptyBarPlaceholder({ message }: { message: string }) {
 
 function DemographicsSkeleton() {
   return (
-    <div className='flex flex-col gap-4'>
+    <div className='flex flex-col gap-5'>
       <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
         {[1, 2, 3].map((i) => (
           <div
@@ -45,10 +60,33 @@ function DemographicsSkeleton() {
           />
         ))}
       </div>
+      <div className='grid grid-cols-1 lg:grid-cols-3 gap-4'>
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5 min-h-[280px] animate-pulse'
+          />
+        ))}
+      </div>
       <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
         <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5 min-h-[280px] animate-pulse' />
         <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5 min-h-[280px] animate-pulse' />
       </div>
+    </div>
+  );
+}
+
+function SubsectionTitle({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className='mb-3'>
+      <h3 className='text-[13px] font-semibold text-gray-800'>{title}</h3>
+      <p className='text-[11px] text-gray-500 mt-0.5'>{description}</p>
     </div>
   );
 }
@@ -117,18 +155,24 @@ export function LeadDemographicsSection({
     scopeLabel ?? authUser?.company?.name ?? 'Périmètre actuel';
   const locationRows = (data?.byLocation ?? []) as DonutDatum[];
   const jobTitleRows = (data?.byJobTitle ?? []) as DonutDatum[];
+  const leadTypeRows = (data?.byLeadType ?? []) as DonutDatum[];
+  const sourceRows = (data?.bySource ?? []) as DonutDatum[];
+  const decisionRoleRows = (data?.byDecisionRole ?? []) as DonutDatum[];
   const showLocationChart = hasMeaningfulBarRows(locationRows);
   const showJobTitleChart = hasMeaningfulBarRows(jobTitleRows);
+  const showLeadTypeChart = hasMeaningfulBarRows(leadTypeRows);
+  const showSourceChart = hasMeaningfulBarRows(sourceRows);
 
   return (
-    <section className='mt-4'>
+    <section id='stats-repartition' className='scroll-mt-4'>
       <div className='mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between'>
         <div>
           <h2 className='text-sm font-semibold text-gray-800'>
             Répartition des prospects
           </h2>
-          <p className='text-xs text-gray-500 mt-0.5'>
-            Civilité, secteur d&apos;activités, situation géographique et poste
+          <p className='text-xs text-gray-500 mt-0.5 max-w-xl'>
+            Type de client, source, rôle du décideur, civilité, secteur,
+            géographie et poste
           </p>
         </div>
         {(scopeLabel || (!loading && data && data.total > 0)) && (
@@ -156,45 +200,100 @@ export function LeadDemographicsSection({
       )}
 
       {!loading && !error && data && data.total > 0 && (
-        <div className='flex flex-col gap-4'>
-          <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-            <TotalProspectsKpiCard total={data.total} scopeLabel={kpiScope} />
-
-            <MarketShareCard
-              title='Par civilité'
-              rows={data.byCivility as DonutDatum[]}
-              centerMetric='categoryCount'
+        <div className='flex flex-col gap-6'>
+          <div>
+            <SubsectionTitle
+              title='Qualification commerciale'
+              description='Critères demandés pour le pilotage : type de client, source du lead et rôle du décideur.'
             />
+            <div className='grid grid-cols-1 lg:grid-cols-3 gap-4'>
+              {showLeadTypeChart ? (
+                <DemographicBarCard
+                  title='Par type de client'
+                  rows={leadTypeRows}
+                  icon={Building2}
+                  emptyMessage='Aucun type de client renseigné pour ce périmètre.'
+                />
+              ) : (
+                <EmptyBarPlaceholder message='Aucun type de client exploitable. Renseignez le champ « Type de client » sur vos fiches entreprises.' />
+              )}
 
-            <MarketShareCard
-              title="Par secteur d'activités"
-              rows={data.byActivitySector as DonutDatum[]}
-              centerMetric='categoryCount'
-            />
+              {showSourceChart ? (
+                <DemographicBarCard
+                  title='Par source du lead'
+                  rows={sourceRows}
+                  icon={Radio}
+                  emptyMessage='Aucune source renseignée pour ce périmètre.'
+                />
+              ) : (
+                <EmptyBarPlaceholder message='Aucune source de lead exploitable. Complétez le champ « Source » sur vos fiches entreprises.' />
+              )}
+
+              {hasMeaningfulBarRows(decisionRoleRows) ? (
+                <MarketShareCard
+                  title='Par rôle du décideur'
+                  rows={decisionRoleRows}
+                  centerMetric='sum'
+                  maxLegendItems={6}
+                />
+              ) : (
+                <EmptyBarPlaceholder message='Aucun rôle du décideur exploitable. Renseignez le rôle sur vos fiches contacts.' />
+              )}
+            </div>
+            <p className='mt-2 text-[10px] text-gray-400'>
+              Type de client et source sont comptés au niveau entreprise ;
+              rôle du décideur au niveau contact
+              {userId ? ' (créés par le commercial sélectionné)' : ''}.
+            </p>
           </div>
 
-          <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
-            {showLocationChart ? (
-              <DemographicBarCard
-                title='Par situation géographique'
-                rows={locationRows}
-                icon={MapPin}
-                emptyMessage='Aucune situation géographique renseignée pour ce périmètre.'
-              />
-            ) : (
-              <EmptyBarPlaceholder message='Aucune situation géographique renseignée sur les prospects de ce périmètre. Complétez le champ « Situation géographique » sur vos fiches leads.' />
-            )}
+          <div>
+            <SubsectionTitle
+              title='Profil démographique'
+              description='Civilité, secteur d’activités, situation géographique et poste.'
+            />
+            <div className='flex flex-col gap-4'>
+              <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+                <TotalProspectsKpiCard total={data.total} scopeLabel={kpiScope} />
 
-            {showJobTitleChart ? (
-              <DemographicBarCard
-                title='Par poste du prospect'
-                rows={jobTitleRows}
-                icon={Briefcase}
-                emptyMessage='Aucun poste renseigné pour ce périmètre.'
-              />
-            ) : (
-              <EmptyBarPlaceholder message='Aucun poste renseigné sur les prospects de ce périmètre. Complétez le champ « Poste / fonction » sur vos fiches leads.' />
-            )}
+                <MarketShareCard
+                  title='Par civilité'
+                  rows={data.byCivility as DonutDatum[]}
+                  centerMetric='categoryCount'
+                />
+
+                <MarketShareCard
+                  title="Par secteur d'activités"
+                  rows={data.byActivitySector as DonutDatum[]}
+                  centerMetric='categoryCount'
+                  maxLegendItems={6}
+                />
+              </div>
+
+              <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
+                {showLocationChart ? (
+                  <DemographicBarCard
+                    title='Par situation géographique'
+                    rows={locationRows}
+                    icon={MapPin}
+                    emptyMessage='Aucune situation géographique renseignée pour ce périmètre.'
+                  />
+                ) : (
+                  <EmptyBarPlaceholder message='Aucun quartier, commune, ville ou pays renseigné sur les prospects de ce périmètre.' />
+                )}
+
+                {showJobTitleChart ? (
+                  <DemographicBarCard
+                    title='Par poste du prospect'
+                    rows={jobTitleRows}
+                    icon={Briefcase}
+                    emptyMessage='Aucun poste renseigné pour ce périmètre.'
+                  />
+                ) : (
+                  <EmptyBarPlaceholder message='Aucun poste renseigné sur les prospects de ce périmètre. Complétez le champ « Poste / fonction » sur vos fiches leads.' />
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

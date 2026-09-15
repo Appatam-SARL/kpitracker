@@ -135,13 +135,32 @@ export async function POST(req: Request) {
       );
     }
 
-    const lead = await prisma.lead.findUnique({
+    const prospect = await prisma.prospect.findUnique({
       where: { id: body.leadId },
-      include: { company: true },
+      include: {
+        contacts: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: "asc" },
+          take: 1,
+          select: { firstName: true, lastName: true },
+        },
+      },
     });
-    if (!lead) {
-      return NextResponse.json({ error: "Lead introuvable" }, { status: 404 });
+    if (!prospect) {
+      return NextResponse.json({ error: "Prospect introuvable" }, { status: 404 });
     }
+    const senderCompany = user.companyId
+      ? await prisma.company.findUnique({
+          where: { id: user.companyId },
+          select: { name: true },
+        })
+      : null;
+    const primaryContact = prospect.contacts[0];
+    const recipientDisplayName =
+      body.recipientName ||
+      (primaryContact
+        ? `${primaryContact.firstName} ${primaryContact.lastName}`
+        : prospect.name);
 
     const htmlWithSignature = appendEmailSignatureIfMissing(
       body.bodyHtml,
@@ -177,9 +196,9 @@ export async function POST(req: Request) {
       LeadEmailTemplate({
         subject: body.subject,
         bodyHtml: safeHtml,
-        recipientName: body.recipientName || `${lead.firstName} ${lead.lastName}`,
+        recipientName: recipientDisplayName,
         senderName: user.name,
-        companyName: lead.company?.name,
+        companyName: senderCompany?.name,
         hideDefaultClosing:
           hasEmailSignatureMarker(safeHtml) || !!user.emailSignature,
       }),
@@ -221,8 +240,8 @@ export async function POST(req: Request) {
     const activity = await prisma.activity.create({
       data: {
         type: "EMAIL",
-        relatedTo: "LEAD",
-        leadId: body.leadId,
+        relatedTo: body.leadId,
+        prospectId: body.leadId,
         userId: user.id,
         content: `Subject: ${body.subject}\n\n${plainSummary}`,
       },
@@ -234,7 +253,7 @@ export async function POST(req: Request) {
       due.setDate(due.getDate() + 7);
       await prisma.agendaItem.create({
         data: {
-          leadId: body.leadId,
+          prospectId: body.leadId,
           createdById: user.id,
           title: `Relancer : ${body.subject}`,
           description: `Email envoyé — voir activité ${activity.id}`,
@@ -247,7 +266,7 @@ export async function POST(req: Request) {
       await logUserAction({
         user: { id: user.id, companyId: user.companyId },
         action: USER_ACTION_CODES.EMAIL_SEND,
-        entityType: 'Lead',
+        entityType: 'Prospect',
         entityId: body.leadId,
         summary: `Envoi d'un email au prospect (${body.subject})`,
         metadata: { label: body.subject, to: body.to },

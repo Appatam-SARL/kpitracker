@@ -26,6 +26,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableEmpty,
   TableHead,
   TableHeader,
   TableRow,
@@ -203,7 +204,7 @@ export default function LeadImportSheet({
       };
       if (companyId) payload.companyId = companyId;
 
-      const res = await fetch('/api/leads/import', {
+      const res = await fetch('/api/prospects/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -318,40 +319,36 @@ export default function LeadImportSheet({
                 {rows.length} ligne(s) prête(s) à l&apos;import. Aperçu (20
                 premières) :
               </p>
-              <div className='flex-1 min-h-0 overflow-auto rounded-xl border border-gray-100'>
-                <Table>
-                  <TableHeader>
-                    <TableRow className='border-b border-gray-100'>
-                      <TableHead className='text-[10px]'>Nom</TableHead>
-                      <TableHead className='text-[10px]'>Prénom</TableHead>
-                      <TableHead className='text-[10px]'>Entreprise</TableHead>
-                      <TableHead className='text-[10px]'>Poste</TableHead>
-                      <TableHead className='text-[10px]'>Source</TableHead>
+              <Table containerClassName='max-h-48'>
+                <TableHeader>
+                  <TableRow className='hover:bg-transparent'>
+                    <TableHead>Nom</TableHead>
+                    <TableHead>Prénom</TableHead>
+                    <TableHead>Entreprise</TableHead>
+                    <TableHead>Poste</TableHead>
+                    <TableHead>Source</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.slice(0, 20).map((r, i) => (
+                    <TableRow key={i}>
+                      <TableCell>
+                        {r.lastName ?? <TableEmpty />}
+                      </TableCell>
+                      <TableCell>
+                        {r.firstName ?? <TableEmpty />}
+                      </TableCell>
+                      <TableCell>{r.companyName}</TableCell>
+                      <TableCell>
+                        {r.jobTitle ?? <TableEmpty />}
+                      </TableCell>
+                      <TableCell>
+                        {r.source ?? <TableEmpty />}
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rows.slice(0, 20).map((r, i) => (
-                      <TableRow key={i} className='border-b border-gray-50'>
-                        <TableCell className='py-1.5 text-[11px]'>
-                          {r.lastName ?? '—'}
-                        </TableCell>
-                        <TableCell className='py-1.5 text-[11px]'>
-                          {r.firstName ?? '—'}
-                        </TableCell>
-                        <TableCell className='py-1.5 text-[11px]'>
-                          {r.companyName}
-                        </TableCell>
-                        <TableCell className='py-1.5 text-[11px]'>
-                          {r.jobTitle ?? '—'}
-                        </TableCell>
-                        <TableCell className='py-1.5 text-[11px]'>
-                          {r.source ?? '—'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                  ))}
+                </TableBody>
+              </Table>
               <div className='flex items-center gap-2 pt-2 border-t border-gray-100'>
                 <button
                   type='button'

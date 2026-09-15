@@ -8,6 +8,14 @@ import { hasGroupCompanyScopeFrontend, isAdminOrManagerLike } from "@/lib/roles"
 import { EmailSignatureSettings } from "@/components/profile/EmailSignatureSettings";
 import { ProfileActionHistory } from "@/components/profile/ProfileActionHistory";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   Mail,
   Briefcase,
   Shield,
@@ -779,123 +787,116 @@ function ProfilePageInner({
                   page Utilisateurs (action « Définir objectif »).
                 </p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-xs">
-                    <thead className="text-gray-500 border-b border-gray-100">
-                      <tr>
-                        <th className="py-2 text-left font-medium">Période</th>
-                        <th className="py-2 text-right font-medium">
-                          Conversions (réalisé / objectif)
-                        </th>
-                        <th className="py-2 text-right font-medium">
-                          CA (réalisé / objectif)
-                        </th>
-                        <th className="py-2 text-right font-medium">Statut</th>
-                        {isManagerOrAdmin && !isSelf && (
-                          <th className="py-2 text-right font-medium">
-                            Actions
-                          </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody className="text-gray-700">
-                      {goals
-                        .sort(
-                          (a, b) =>
-                            new Date(b.periodStart).getTime() -
-                            new Date(a.periodStart).getTime()
-                        )
-                        .map((g) => {
-                          const now = new Date();
-                          const start = new Date(g.periodStart);
-                          const end = new Date(g.periodEnd);
-                          const isCurrentPeriod = now >= start && now <= end;
-                          const conversionsDone =
-                            g.realizedConversions >= g.targetConversions;
-                          const revenueDone =
-                            g.realizedRevenue >= g.targetRevenue;
-                          const allDone = conversionsDone && revenueDone;
-                          const status = allDone
-                            ? "Atteint"
-                            : isCurrentPeriod
-                              ? "En cours"
-                              : "Terminé";
-                          return (
-                            <tr
-                              key={g.id}
-                              className="border-b border-gray-50 hover:bg-gray-50/60"
-                            >
-                              <td className="py-2.5 font-medium">
-                                {g.periodLabel}
-                              </td>
-                              <td className="py-2.5 text-right">
-                                {g.realizedConversions} / {g.targetConversions}
-                              </td>
-                              <td className="py-2.5 text-right">
-                                {g.realizedRevenue.toLocaleString("fr-FR", {
-                                  style: "currency",
-                                  currency: "XOF",
-                                  maximumFractionDigits: 0,
-                                })}{" "}
-                                /{" "}
-                                {g.targetRevenue.toLocaleString("fr-FR", {
-                                  style: "currency",
-                                  currency: "XOF",
-                                  maximumFractionDigits: 0,
-                                })}
-                              </td>
-                              <td className="py-2.5 text-right">
-                                {allDone ? (
-                                  <span className="inline-flex items-center gap-1 text-emerald-600">
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                    {status}
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 text-gray-500">
-                                    <Clock className="w-3.5 h-3.5" />
-                                    {status}
-                                  </span>
-                                )}
-                              </td>
-                                  {isManagerOrAdmin && !isSelf && (
-                                    <td className="py-2.5 text-right">
-                                      {(() => {
-                                        const now = new Date();
-                                        const end = new Date(g.periodEnd);
-                                        const periodFinished = now > end;
-                                        const conversionsNotReached =
-                                          g.targetConversions > 0 &&
-                                          g.realizedConversions <
-                                            g.targetConversions;
-                                        const revenueNotReached =
-                                          g.targetRevenue > 0 &&
-                                          g.realizedRevenue < g.targetRevenue;
-                                        const canRenew =
-                                          periodFinished &&
-                                          (conversionsNotReached ||
-                                            revenueNotReached);
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>Période</TableHead>
+                      <TableHead className="text-right">
+                        Conversions (réalisé / objectif)
+                      </TableHead>
+                      <TableHead className="text-right">
+                        CA (réalisé / objectif)
+                      </TableHead>
+                      <TableHead className="text-right">Statut</TableHead>
+                      {isManagerOrAdmin && !isSelf && (
+                        <TableHead className="text-right">Actions</TableHead>
+                      )}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {goals
+                      .sort(
+                        (a, b) =>
+                          new Date(b.periodStart).getTime() -
+                          new Date(a.periodStart).getTime()
+                      )
+                      .map((g) => {
+                        const now = new Date();
+                        const start = new Date(g.periodStart);
+                        const end = new Date(g.periodEnd);
+                        const isCurrentPeriod = now >= start && now <= end;
+                        const conversionsDone =
+                          g.realizedConversions >= g.targetConversions;
+                        const revenueDone =
+                          g.realizedRevenue >= g.targetRevenue;
+                        const allDone = conversionsDone && revenueDone;
+                        const status = allDone
+                          ? "Atteint"
+                          : isCurrentPeriod
+                            ? "En cours"
+                            : "Terminé";
+                        return (
+                          <TableRow key={g.id}>
+                            <TableCell className="font-medium">
+                              {g.periodLabel}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {g.realizedConversions} / {g.targetConversions}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {g.realizedRevenue.toLocaleString("fr-FR", {
+                                style: "currency",
+                                currency: "XOF",
+                                maximumFractionDigits: 0,
+                              })}{" "}
+                              /{" "}
+                              {g.targetRevenue.toLocaleString("fr-FR", {
+                                style: "currency",
+                                currency: "XOF",
+                                maximumFractionDigits: 0,
+                              })}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {allDone ? (
+                                <span className="inline-flex items-center gap-1 text-emerald-600">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  {status}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-gray-500">
+                                  <Clock className="w-3.5 h-3.5" />
+                                  {status}
+                                </span>
+                              )}
+                            </TableCell>
+                            {isManagerOrAdmin && !isSelf && (
+                              <TableCell className="text-right">
+                                {(() => {
+                                  const now = new Date();
+                                  const end = new Date(g.periodEnd);
+                                  const periodFinished = now > end;
+                                  const conversionsNotReached =
+                                    g.targetConversions > 0 &&
+                                    g.realizedConversions <
+                                      g.targetConversions;
+                                  const revenueNotReached =
+                                    g.targetRevenue > 0 &&
+                                    g.realizedRevenue < g.targetRevenue;
+                                  const canRenew =
+                                    periodFinished &&
+                                    (conversionsNotReached ||
+                                      revenueNotReached);
 
-                                        if (!canRenew) return null;
+                                  if (!canRenew) return null;
 
-                                        return (
-                                          <button
-                                            type="button"
-                                            onClick={() => handleRenew(g)}
-                                            disabled={renewingId === g.id}
-                                            className="inline-flex items-center px-3 py-1.5 rounded-full bg-primary/10 text-primary text-[11px] font-medium hover:bg-primary/15 disabled:opacity-50"
-                                          >
-                                            Reconduire
-                                          </button>
-                                        );
-                                      })()}
-                                    </td>
-                                  )}
-                            </tr>
-                          );
-                        })}
-                    </tbody>
-                  </table>
-                </div>
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRenew(g)}
+                                      disabled={renewingId === g.id}
+                                      className="inline-flex items-center px-3 py-1.5 rounded-full bg-primary/10 text-primary text-[11px] font-medium hover:bg-primary/15 disabled:opacity-50"
+                                    >
+                                      Reconduire
+                                    </button>
+                                  );
+                                })()}
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        );
+                      })}
+                  </TableBody>
+                </Table>
               )}
             </NeumoCard>
           )}

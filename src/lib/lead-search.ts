@@ -8,7 +8,7 @@ export const LEAD_SEARCH_FIELDS = [
   { id: 'activitySector', label: "Secteur d'activités" },
   { id: 'leadType', label: 'Type de client' },
   { id: 'activityDomains', label: "Domaines d'activités" },
-  { id: 'location', label: 'Situation géographique' },
+  { id: 'location', label: 'Quartier, commune, ville, pays' },
   { id: 'source', label: 'Source' },
   { id: 'civility', label: 'Civilité' },
   { id: 'notes', label: 'Notes / observation' },
@@ -36,26 +36,54 @@ export type LeadSearchable = {
   activityDomains?: string[] | null;
   leadType?: string | null;
   location?: string | null;
+  geographicSituation?: string | null;
   source?: string | null;
   civility?: string | null;
   notes?: string | null;
   crmCompanyName?: string | null;
+  contacts?: Array<{
+    firstName?: string | null;
+    lastName?: string | null;
+    jobTitle?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  }> | null;
 };
+
+function contactField(
+  lead: LeadSearchable,
+  key: 'firstName' | 'lastName' | 'jobTitle' | 'email' | 'phone',
+): string {
+  return (lead.contacts ?? [])
+    .map((c) => c[key] ?? '')
+    .filter(Boolean)
+    .join(' ');
+}
 
 function fieldValue(lead: LeadSearchable, field: LeadSearchFieldId): string {
   switch (field) {
     case 'firstName':
-      return lead.firstName ?? '';
+      return [lead.firstName, contactField(lead, 'firstName')]
+        .filter(Boolean)
+        .join(' ');
     case 'lastName':
-      return lead.lastName ?? '';
+      return [lead.lastName, contactField(lead, 'lastName')]
+        .filter(Boolean)
+        .join(' ');
     case 'email':
-      return lead.email ?? '';
+      return [lead.email, contactField(lead, 'email')]
+        .filter(Boolean)
+        .join(' ');
     case 'phone':
-      return lead.phone ?? '';
+      return [lead.phone, contactField(lead, 'phone')]
+        .filter(Boolean)
+        .join(' ');
     case 'companyName':
       return lead.companyName ?? '';
     case 'jobTitle':
-      return lead.jobTitle ?? '';
+      return [lead.jobTitle, contactField(lead, 'jobTitle')]
+        .filter(Boolean)
+        .join(' ');
     case 'activitySector':
       return lead.activitySector ?? '';
     case 'leadType':
@@ -63,7 +91,7 @@ function fieldValue(lead: LeadSearchable, field: LeadSearchFieldId): string {
     case 'activityDomains':
       return (lead.activityDomains ?? []).join(' ');
     case 'location':
-      return lead.location ?? '';
+      return [lead.location, lead.geographicSituation].filter(Boolean).join(' ');
     case 'source':
       return lead.source ?? '';
     case 'civility':

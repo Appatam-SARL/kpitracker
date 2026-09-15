@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     const whereBase = await resolveDashboardLeadWhere(user, companyIdParam);
     if (whereBase instanceof NextResponse) return whereBase;
 
-    const rows = await prisma.lead.findMany({
+    const rows = await prisma.prospect.findMany({
       where: whereBase,
       select: { source: true },
     });

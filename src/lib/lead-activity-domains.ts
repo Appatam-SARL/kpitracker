@@ -1,3 +1,8 @@
+import {
+  DEFAULT_ACTIVITY_DOMAINS,
+  matchCiapListValue,
+} from '@/config/lead-options';
+
 export function sanitizeActivityDomain(raw: string): string | null {
   const trimmed = raw.replace(/\s+/g, ' ').trim();
   return trimmed || null;
@@ -10,12 +15,14 @@ export function normalizeActivityDomainsInput(
   const seen = new Set<string>();
   const result: string[] = [];
   for (const raw of domains) {
-    const value = sanitizeActivityDomain(raw);
-    if (!value) continue;
-    const key = value.toLowerCase();
+    const matched =
+      matchCiapListValue(raw, DEFAULT_ACTIVITY_DOMAINS) ??
+      sanitizeActivityDomain(raw);
+    if (!matched) continue;
+    const key = matched.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    result.push(value);
+    result.push(matched);
   }
   return result;
 }
@@ -25,7 +32,7 @@ export type ActivityDomainsValidationResult = {
   errors: string[];
 };
 
-/** Parse une cellule import (virgules) — saisie libre par la commerciale. */
+/** Parse une cellule import (virgules) contre la liste CIAP des domaines. */
 export function validateActivityDomainsCell(
   raw: string | undefined,
 ): ActivityDomainsValidationResult {
@@ -39,10 +46,25 @@ export function validateActivityDomainsCell(
     .map((p) => p.trim())
     .filter(Boolean);
 
-  return {
-    domains: normalizeActivityDomainsInput(parts),
-    errors: [],
-  };
+  const domains: string[] = [];
+  const errors: string[] = [];
+  const seen = new Set<string>();
+
+  for (const part of parts) {
+    const match = matchCiapListValue(part, DEFAULT_ACTIVITY_DOMAINS);
+    if (!match) {
+      errors.push(
+        `Domaine d'activités « ${part} » non reconnu. Choisissez une valeur dans la liste CIAP.`,
+      );
+      continue;
+    }
+    const key = match.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    domains.push(match);
+  }
+
+  return { domains, errors };
 }
 
 export function mapLeadActivityDomains(

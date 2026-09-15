@@ -17,7 +17,6 @@ model Company {
   createdAt DateTime @default(now())
 
   users      User[]
-  leads      Lead[]
   deals      Deal[]
   clients    Client[]
   products   Product[]
@@ -27,6 +26,8 @@ model Company {
   sales      Sale[]
   /// Journal des actions utilisateurs sur cette société
   userActionLogs UserActionLog[]
+  /// Synthèses de ventes générées
+  salesReports   SalesReport[]
 }
 
 enum CompanyKind {
@@ -40,9 +41,8 @@ model Product {
   company   Company  @relation(fields: [companyId], references: [id])
   companyId String
   createdAt DateTime @default(now())
-  leads     Lead[]   @relation("LeadProducts")
-  /// Intérêts exprimés par les leads pour ce produit, avec valeur estimative
-  leadInterests LeadProductInterest[]
+  /// Intérêts exprimés par les contacts prospect pour ce produit
+  prospectInterests ProspectProductInterest[]
   /// Intérêts exprimés par les clients pour ce produit, avec valeur estimative
   clientInterests ClientProductInterest[]
   /// Lignes de vente associées à ce produit
@@ -55,9 +55,8 @@ model Service {
   company   Company  @relation(fields: [companyId], references: [id])
   companyId String
   createdAt DateTime @default(now())
-  leads     Lead[]   @relation("LeadServices")
-  /// Intérêts exprimés par les leads pour ce service, avec valeur estimative
-  leadInterests LeadServiceInterest[]
+  /// Intérêts exprimés par les contacts prospect pour ce service
+  prospectInterests ProspectServiceInterest[]
   /// Intérêts exprimés par les clients pour ce service, avec valeur estimative
   clientInterests ClientServiceInterest[]
   /// Lignes de vente associées à ce service
@@ -97,14 +96,25 @@ model User {
   actionLogs       UserActionLog[]
   /// Jetons de réinitialisation de mot de passe
   passwordResetTokens PasswordResetToken[]
+  /// Contacts créés par cet utilisateur sur des prospects entreprise
+  prospectContactsCreated ProspectContact[] @relation("ProspectContactCreatedBy")
+  /// Intérêts produits proposés par cet utilisateur
+  prospectProductInterests ProspectProductInterest[]
+  /// Intérêts services proposés par cet utilisateur
+  prospectServiceInterests ProspectServiceInterest[]
+  /// Rapports de synthèse générés par cet utilisateur
+  salesReportsCreated SalesReport[] @relation("SalesReportCreatedBy")
+  /// Rapports ciblant ce commercial
+  salesReportsAsAgent SalesReport[] @relation("SalesReportAgent")
   /// Mise en corbeille
   deletedAt        DateTime?
   deletedBy        User?     @relation("UserDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
   deletedById      String?
   usersDeleted     User[]    @relation("UserDeletedBy")
-  leadsDeleted     Lead[]    @relation("LeadDeletedBy")
+  prospectsDeleted Prospect[] @relation("ProspectDeletedBy")
+  contactsDeleted  ProspectContact[] @relation("ProspectContactDeletedBy")
   goalsDeleted     SalesGoal[] @relation("SalesGoalDeletedBy")
-  attachmentsDeleted LeadAttachment[] @relation("LeadAttachmentDeletedBy")
+  attachmentsDeleted ProspectAttachment[] @relation("ProspectAttachmentDeletedBy")
 
   @@index([companyId, deletedAt])
 }
@@ -123,118 +133,159 @@ model PasswordResetToken {
   @@index([userId, createdAt])
 }
 
-model Lead {
-  id         String   @id @default(cuid())
-  firstName  String
-  lastName   String
-  phone      String?
-  email      String?
-  source     String?
-  /// Civilité (ex: M., Mme) issue du fichier Excel
-  civility   String?
-  /// Secteur d'activités (colonne Excel « Secteur d'activités »)
+/// Entreprise prospectée (partagée entre toutes les sociétés GROUP)
+model Prospect {
+  id             String         @id @default(cuid())
+  /// Raison sociale / nom commercial
+  name           String
+  /// Nom normalisé pour unicité / recherche
+  nameNormalized String
+  source         String?
+  /// Secteur d'activités
   activitySector String?
   /// Type de client (TypeClient)
-  leadType LeadTypeClient @default(NON_DETERMINE)
-  /// Nom de la compagnie au moment de la création du lead
-  companyName String?
-  /// Poste / fonction du prospect dans son entreprise
-  jobTitle   String?
-  /// Adresse / localisation (utile pour l'affichage sur la carte)
-  location   String?
-  /// Notes libres (ex: observation du fichier Excel)
-  notes      String?
-  status     LeadStatus @default(NEW)
-  assignedTo String?
-  company   Company  @relation(fields: [companyId], references: [id])
-  companyId String
-  createdAt DateTime @default(now())
+  leadType       LeadTypeClient @default(NON_DETERMINE)
+  /// Quartier, commune, ville, pays
+  location       String?
+  /// Lien de situation géographique (Google Maps, etc.)
+  geographicSituation String?
+  /// Site web de l'entreprise
+  websiteUrl     String?
+  /// Logo de l'entreprise (chemin public)
+  logoUrl        String?
+  /// Pages réseaux sociaux : [{ network, url }]
+  socialLinks    Json?
+  notes          String?
+  /// Stade agrégé (pipeline entreprise) — source de vérité fine = contact
+  status         NegotiationStage @default(EN_PROSPECTION)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
-  activities Activity[]
-  /// Produits pour lesquels le prospect a exprimé un intérêt
-  products   Product[] @relation("LeadProducts")
-  /// Services pour lesquels le prospect a exprimé un intérêt
-  services   Service[] @relation("LeadServices")
-  /// Intérêts produits avec valeur estimative (pivot)
-  productInterests LeadProductInterest[]
-  /// Intérêts services avec valeur estimative (pivot)
-  serviceInterests LeadServiceInterest[]
-  /// Pièces jointes (fichiers) associées au prospect
-  attachments LeadAttachment[]
-  /// Événements / tâches de prospection enregistrés dans l'agenda
-  agendaItems AgendaItem[]
-  /// Domaines d'activités (plusieurs par lead)
-  activityDomains LeadActivityDomain[]
+  contacts         ProspectContact[]
+  activities       Activity[]
+  attachments      ProspectAttachment[]
+  agendaItems      AgendaItem[]
+  activityDomains  ProspectActivityDomain[]
   /// Mise en corbeille
-  deletedAt     DateTime?
-  deletedBy     User?     @relation("LeadDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
-  deletedById   String?
+  deletedAt        DateTime?
+  deletedBy        User?     @relation("ProspectDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  deletedById      String?
 
-  @@index([companyId, deletedAt])
+  @@unique([nameNormalized])
+  @@index([deletedAt])
+  @@index([status])
 }
 
-/// Domaine d'activités rattaché à un lead (liste canonique lead-options)
-model LeadActivityDomain {
-  id     String @id @default(cuid())
-  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  leadId String
-  domain String
+/// Contact (personne) rattaché à une entreprise prospectée, créé par une commerciale
+model ProspectContact {
+  id          String   @id @default(cuid())
+  prospect    Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  prospectId  String
+  createdBy   User     @relation("ProspectContactCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  createdById String
+  firstName    String
+  lastName     String
+  phone        String?
+  email        String?
+  civility     String?
+  jobTitle     String?
+  /// Rôle dans la décision (décideur, prescripteur, …)
+  decisionRole DecisionRole @default(NON_DETERMINE)
+  /// Stade de négociation entre la commerciale et ce contact
+  negotiationStage NegotiationStage @default(EN_PROSPECTION)
+  notes        String?
+  /// Champs spécifiques BIIM (visibles si la commerciale appartient à BIIM)
+  /// Types de documents sélectionnés (JSON string[])
+  biimDocuments  Json?
+  biimRegistered Boolean?
+  biimVisited    Boolean?
+  biimApproved   Boolean?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
-  @@unique([leadId, domain])
+  productInterests ProspectProductInterest[]
+  serviceInterests ProspectServiceInterest[]
+  activities       Activity[]
+  agendaItems      AgendaItem[]
+  attachments      ProspectAttachment[]
+  /// Mise en corbeille
+  deletedAt        DateTime?
+  deletedBy        User?     @relation("ProspectContactDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  deletedById      String?
+
+  @@index([prospectId, deletedAt])
+  @@index([createdById])
+  @@index([negotiationStage])
+}
+
+/// Domaine d'activités rattaché à un prospect entreprise
+model ProspectActivityDomain {
+  id         String   @id @default(cuid())
+  prospect   Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  prospectId String
+  domain     String
+
+  @@unique([prospectId, domain])
   @@index([domain])
 }
 
-/// Lien entre un lead et un produit, avec une valeur estimative associée
-model LeadProductInterest {
-  id             String   @id @default(cuid())
-  lead           Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  leadId         String
-  product        Product? @relation(fields: [productId], references: [id])
+/// Intérêt produit proposé par une commerciale sur un contact
+model ProspectProductInterest {
+  id             String          @id @default(cuid())
+  contact        ProspectContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId      String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  product        Product?        @relation(fields: [productId], references: [id])
   productId      String?
-  /// Nom libre saisi via bouton "Autre" quand aucun produit catalogue n'est associé
   customName     String?
-  estimatedValue Float    @default(0)
-  createdAt      DateTime @default(now())
+  estimatedValue Float           @default(0)
+  createdAt      DateTime        @default(now())
 
-  @@unique([leadId, productId])
-  @@unique([leadId, customName])
+  @@unique([contactId, userId, productId])
+  @@unique([contactId, userId, customName])
+  @@index([userId])
 }
 
-/// Lien entre un lead et un service, avec une valeur estimative associée
-model LeadServiceInterest {
-  id             String   @id @default(cuid())
-  lead           Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  leadId         String
-  service        Service? @relation(fields: [serviceId], references: [id])
+/// Intérêt service proposé par une commerciale sur un contact
+model ProspectServiceInterest {
+  id             String          @id @default(cuid())
+  contact        ProspectContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId      String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  service        Service?        @relation(fields: [serviceId], references: [id])
   serviceId      String?
-  /// Nom libre saisi via bouton "Autre" quand aucun service catalogue n'est associé
   customName     String?
-  estimatedValue Float    @default(0)
-  createdAt      DateTime @default(now())
+  estimatedValue Float           @default(0)
+  createdAt      DateTime        @default(now())
 
-  @@unique([leadId, serviceId])
-  @@unique([leadId, customName])
+  @@unique([contactId, userId, serviceId])
+  @@unique([contactId, userId, customName])
+  @@index([userId])
 }
 
-/// Pièce jointe d'un prospect (fichier uploadé)
-model LeadAttachment {
-  id          String   @id @default(cuid())
-  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  leadId      String
+/// Pièce jointe d'un prospect entreprise (optionnellement liée à un contact)
+model ProspectAttachment {
+  id          String    @id @default(cuid())
+  prospect    Prospect  @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  prospectId  String
+  /// Contact associé (ex. documents BIIM uploadés à l'enregistrement)
+  contact     ProspectContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  contactId   String?
+  /// Libellé métier (ex. Agrément du Ministère du Tourisme)
+  label       String?
   fileName    String
-  /// Type / extension du fichier (PDF, JPG, PNG, etc.)
   fileType    String
-  /// Taille en octets
   fileSize    Int
-  /// Chemin de stockage (ex: /uploads/leads/xxx/filename.pdf)
   storagePath String
-  createdAt   DateTime @default(now())
-  /// Mise en corbeille
+  createdAt   DateTime  @default(now())
   deletedAt   DateTime?
-  deletedBy   User?    @relation("LeadAttachmentDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  deletedBy   User?     @relation("ProspectAttachmentDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
   deletedById String?
 
-  @@index([leadId, deletedAt])
+  @@index([prospectId, deletedAt])
+  @@index([contactId, deletedAt])
 }
 
 model Deal {
@@ -258,7 +309,7 @@ model Client {
   email     String?
   /// Téléphone du client (copié depuis le lead)
   phone     String?
-  /// Source d'acquisition (ex: Facebook, WhatsApp, Site web...)
+  /// Source d'acquisition (ex: Facebook, LinkedIn, Tik Tok...)
   source    String?
   /// Civilité (M., Mme, etc.)
   civility  String?
@@ -283,6 +334,8 @@ model Client {
   convertedById String?
   convertedAt   DateTime?
   convertedBy   User?   @relation(fields: [convertedById], references: [id])
+  /// Prospect entreprise d'origine (optionnel)
+  convertedFromProspectId String?
   /// Produits pour lesquels le client est intéressé, avec valeur estimative
   productInterests ClientProductInterest[]
   /// Services pour lesquels le client est intéressé, avec valeur estimative
@@ -350,15 +403,20 @@ model SaleItem {
 }
 
 model Activity {
-  id        String   @id @default(cuid())
-  type      ActivityType
-  relatedTo String
-  lead      Lead?    @relation(fields: [leadId], references: [id])
-  leadId    String?
-  user      User     @relation(fields: [userId], references: [id])
-  userId    String
-  date      DateTime @default(now())
-  content   String
+  id         String            @id @default(cuid())
+  type       ActivityType
+  relatedTo  String
+  prospect   Prospect?         @relation(fields: [prospectId], references: [id], onDelete: SetNull)
+  prospectId String?
+  contact    ProspectContact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  contactId  String?
+  user       User              @relation(fields: [userId], references: [id])
+  userId     String
+  date       DateTime          @default(now())
+  content    String
+
+  @@index([prospectId])
+  @@index([contactId])
 }
 
 enum Role {
@@ -370,12 +428,11 @@ enum Role {
   AGENT
 }
 
-enum LeadStatus {
-  NEW
-  CONTACTED
-  QUALIFIED
-  LOST
-  CONVERTED
+/// Stade de négociation (commerciale ↔ contact au sein de l'entreprise prospectée)
+enum NegotiationStage {
+  EN_PROSPECTION
+  VENTE_CONCLUE
+  VENTE_PERDUE
 }
 
 enum LeadTypeClient {
@@ -388,6 +445,15 @@ enum LeadTypeClient {
   AGENCE_DE_COOPERATION_OPERATEUR
   INSTITUTION_FINANCIERE_INTERNATIONALE_IFI
   ONG_ASSOCIATION_ACADEMIQUE
+  NON_DETERMINE
+}
+
+/// Rôle du contact dans la décision d'achat
+enum DecisionRole {
+  DECIDEUR
+  PRESCRIPTEUR
+  INFLUENCEUR
+  RELAI_INTERNE
   NON_DETERMINE
 }
 
@@ -440,19 +506,24 @@ model SalesGoal {
   @@index([companyId, deletedAt])
 }
 
-/// Événement de l'agenda : action à mener sur un prospect (prospection → conversion)
+/// Événement de l'agenda : action à mener sur un prospect entreprise
 model AgendaItem {
-  id          String       @id @default(cuid())
-  lead        Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  leadId      String
+  id          String           @id @default(cuid())
+  prospect    Prospect         @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  prospectId  String
+  contact     ProspectContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  contactId   String?
   /// Utilisateur (commercial/membre) qui a créé cette tâche
   createdById String?
-  createdBy   User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
   title       String
   description String?
   dueDate     DateTime
-  status      AgendaStatus @default(TODO)
-  createdAt   DateTime     @default(now())
+  status      AgendaStatus     @default(TODO)
+  createdAt   DateTime         @default(now())
+
+  @@index([prospectId])
+  @@index([contactId])
 }
 
 /// Journal d'audit des actions CRM (mutations + authentification)
@@ -475,4 +546,34 @@ model UserActionLog {
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([companyId, createdAt(sort: Desc)])
+}
+
+/// Synthèse des ventes générée et historisée (téléchargeable PDF / Excel / Word)
+model SalesReport {
+  id          String   @id @default(cuid())
+  title       String
+  periodFrom  DateTime
+  periodTo    DateTime
+  /// Filtre source optionnel au moment de la génération
+  source      String?
+  /// Libellé du périmètre (Holding, nom filiale, etc.)
+  scopeLabel  String?
+  /// Snapshot JSON du SalesSummaryReport
+  payload     Json
+  /// Commercial ciblé (null = toutes les commerciales du périmètre)
+  agentId     String?
+  agent       User?    @relation("SalesReportAgent", fields: [agentId], references: [id], onDelete: SetNull)
+  /// Société de rattachement (créateur / filtre single)
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User     @relation("SalesReportCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  /// Archivage (null = actif)
+  archivedAt  DateTime?
+
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([createdById, createdAt(sort: Desc)])
+  @@index([agentId])
+  @@index([companyId, archivedAt])
 }

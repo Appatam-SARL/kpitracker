@@ -1,15 +1,27 @@
 'use client';
 
-import LeadCard, { type Lead } from '@/components/LeadCard';
-import LeadCreateSheet from '@/components/LeadCreateSheet';
+import LeadCard, {
+  type Lead,
+  type LeadContactPreview,
+} from '@/components/LeadCard';
+import ProspectCreateSheet from '@/components/ProspectCreateSheet';
 import LeadEditSheet from '@/components/LeadEditSheet';
 import LeadImportSheet from '@/components/LeadImportSheet';
 import GroupCompanySelect from '@/components/GroupCompanySelect';
 import LeadSearchBar from '@/components/leads/LeadSearchBar';
+import LeadsOnboardingCarousel from '@/components/leads/LeadsOnboardingCarousel';
 import NeumoCard from '@/components/NeumoCard';
 import PipelineColumn from '@/components/PipelineColumn';
 import SkeletonLoader from '@/components/SkeletonLoader';
 import { withDashboardLayout } from '@/components/layouts/withDashboardLayout';
+import { formatLeadTypeLabel } from '@/config/lead-options';
+import {
+  NEGOTIATION_STAGE_FIELD_LABEL,
+  NEGOTIATION_STAGE_LABELS,
+  NEGOTIATION_STAGE_ORDER,
+  NEGOTIATION_STAGE_STYLES,
+  mapLegacyLeadStatusToNegotiationStage,
+} from '@/config/negotiation-stage';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,6 +32,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableEmpty,
   TableHead,
   TableHeader,
   TableRow,
@@ -37,15 +50,17 @@ import {
   ChevronLeft,
   ChevronRight,
   Columns3,
+  Download,
   Eye,
-  FileSpreadsheet,
   LayoutGrid,
   List,
   MoreHorizontal,
   Pencil,
   Plus,
   Trash2,
+  Upload,
 } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -76,31 +91,33 @@ interface LeadRow {
   companyName?: string | null;
   jobTitle?: string | null;
   location?: string | null;
+  geographicSituation?: string | null;
   activityDomains?: string[];
   activitySector?: string | null;
   leadType?: string | null;
   civility?: string | null;
   crmCompanyName?: string;
+  contactsCount?: number;
+  contactsPreview?: LeadContactPreview[];
+  contacts?: LeadContactPreview[];
+}
+
+function contactInitials(firstName?: string, lastName?: string) {
+  const a = (firstName?.trim()?.[0] ?? '').toUpperCase();
+  const b = (lastName?.trim()?.[0] ?? '').toUpperCase();
+  return `${a}${b}` || '?';
 }
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
-const STATUS_ORDER = ['NEW', 'CONTACTED', 'QUALIFIED', 'LOST', 'CONVERTED'];
+const STATUS_ORDER = [...NEGOTIATION_STAGE_ORDER];
 
 const STATUS_LABELS: Record<string, string> = {
-  NEW: 'Nouveau lead',
-  CONTACTED: 'Contacté',
-  QUALIFIED: 'Qualifié',
-  LOST: 'Perdu',
-  CONVERTED: 'Converti',
+  ...NEGOTIATION_STAGE_LABELS,
 };
 
 const STATUS_STYLES: Record<string, string> = {
-  NEW: 'bg-blue-100 text-blue-700 border border-blue-200',
-  CONTACTED: 'bg-amber-100 text-amber-800 border border-amber-200',
-  QUALIFIED: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
-  LOST: 'bg-rose-100 text-rose-700 border border-rose-200',
-  CONVERTED: 'bg-teal-100 text-teal-700 border border-teal-200',
+  ...NEGOTIATION_STAGE_STYLES,
 };
 
 type ViewMode = 'liste' | 'kanban' | 'grid';
@@ -122,7 +139,7 @@ function buildSystemViewFilters(id: string): Filters {
     // Leads à relancer : actifs, sans activité récente (7 jours)
     return {
       ...DEFAULT_FILTERS,
-      status: ['NEW', 'CONTACTED', 'QUALIFIED'],
+      status: ['EN_PROSPECTION'],
       staleDays: 7,
     };
   }
@@ -235,57 +252,65 @@ function LeadsPageInner() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (hasGroupScope && apiCompanyId) {
-        params.set('companyId', apiCompanyId);
-      }
-      if (filters.status.length) {
-        params.set('status', filters.status.join(','));
-      }
-      if (filters.source.trim()) {
-        params.set('source', filters.source.trim());
-      }
-      if (filters.assignedTo) {
-        params.set('assignedTo', filters.assignedTo);
-      }
-      if (filters.createdFrom) {
-        params.set('createdFrom', filters.createdFrom);
-      }
-      if (filters.createdTo) {
-        params.set('createdTo', filters.createdTo);
-      }
-      if (filters.staleDays && filters.staleDays > 0) {
-        params.set('staleDays', String(filters.staleDays));
+      if (filters.status.length === 1) {
+        params.set('status', filters.status[0]);
       }
 
       const qs = params.toString();
-      const res = await fetch(`/api/leads${qs ? `?${qs}` : ''}`);
+      const res = await fetch(`/api/prospects${qs ? `?${qs}` : ''}`);
       if (!res.ok) return;
       const data = await res.json();
-      const mapped: LeadRow[] = data.map((l: any) => ({
-        id: l.id,
-        firstName: l.firstName,
-        lastName: l.lastName,
-        email: l.email,
-        phone: l.phone,
-        source: l.source,
-        companyName: l.companyName,
-        jobTitle: l.jobTitle,
-        location: l.location,
-        activityDomains: l.activityDomains ?? [],
-        activitySector: l.activitySector ?? null,
-        leadType: l.leadType ?? null,
-        civility: l.civility,
-        notes: l.notes ?? undefined,
-        status: l.status ?? 'NEW',
-        crmCompanyName: l.crmCompanyName ?? undefined,
-      }));
+      const mapped: LeadRow[] = (Array.isArray(data) ? data : []).map(
+        (p: {
+          id: string;
+          name: string;
+          source?: string | null;
+          location?: string | null;
+          geographicSituation?: string | null;
+          activityDomains?: string[];
+          activitySector?: string | null;
+          leadType?: string | null;
+          notes?: string | null;
+          status?: string;
+          contactsCount?: number;
+          contactsPreview?: LeadContactPreview[];
+        }) => {
+          const preview = p.contactsPreview ?? [];
+          const first = preview[0];
+          return {
+            id: p.id,
+            firstName: first?.firstName ?? '',
+            lastName: first?.lastName ?? '',
+            email: first?.email,
+            phone: first?.phone,
+            source: p.source,
+            companyName: p.name,
+            jobTitle:
+              typeof p.contactsCount === 'number'
+                ? `${p.contactsCount} contact${p.contactsCount > 1 ? 's' : ''}`
+                : null,
+            location: p.location,
+            geographicSituation: p.geographicSituation,
+            activityDomains: p.activityDomains ?? [],
+            activitySector: p.activitySector ?? null,
+            leadType: p.leadType ?? null,
+            notes: p.notes
+              ? `${formatLeadTypeLabel(p.leadType)} · ${p.notes}`
+              : formatLeadTypeLabel(p.leadType),
+            status: mapLegacyLeadStatusToNegotiationStage(p.status),
+            contactsCount: p.contactsCount ?? preview.length,
+            contactsPreview: preview,
+            contacts: preview,
+          };
+        },
+      );
       setLeads(mapped);
     } catch {
       // silencieux pour le MVP
     } finally {
       setLoading(false);
     }
-  }, [filters, hasGroupScope, apiCompanyId]);
+  }, [filters.status]);
 
   useEffect(() => {
     void fetchLeads();
@@ -336,7 +361,11 @@ function LeadsPageInner() {
     const map: Record<string, LeadRow[]> = {};
     for (const status of STATUS_ORDER) map[status] = [];
     for (const lead of filtered) {
-      const key = STATUS_ORDER.includes(lead.status) ? lead.status : 'NEW';
+      const key = STATUS_ORDER.includes(
+        lead.status as (typeof STATUS_ORDER)[number],
+      )
+        ? lead.status
+        : 'EN_PROSPECTION';
       map[key].push(lead);
     }
     return map;
@@ -351,10 +380,10 @@ function LeadsPageInner() {
       prev.map((l) => (l.id === leadId ? { ...l, status: newStatus } : l)),
     );
     try {
-      const res = await fetch('/api/leads', {
+      const res = await fetch(`/api/prospects/${leadId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: leadId, status: newStatus }),
+        body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) throw new Error('Erreur');
     } catch {
@@ -366,10 +395,9 @@ function LeadsPageInner() {
     }
   };
 
-  // Ouvrir le lead dans le formulaire d'édition
+  // Ouvrir le prospect (fiche entreprise)
   const openLead = (lead: Lead) => {
-    setSelectedLead(lead);
-    setEditOpen(true);
+    router.push(`/leads/${lead.id}`);
   };
 
   // Export des leads
@@ -380,7 +408,7 @@ function LeadsPageInner() {
       if (hasGroupScope && apiCompanyId)
         params.set('companyId', apiCompanyId);
       const res = await fetch(
-        `/api/leads/export${params.toString() ? `?${params.toString()}` : ''}`,
+        `/api/prospects/export${params.toString() ? `?${params.toString()}` : ''}`,
       );
       if (!res.ok) {
         // eslint-disable-next-line no-console
@@ -454,17 +482,27 @@ function LeadsPageInner() {
 
   return (
     <>
-      <section className='mt-2 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between'>
-        <div className='min-w-0'>
-          <h1 className='text-xl font-semibold text-primary md:text-2xl'>
-            Leads
-          </h1>
-          <p className='text-xs text-gray-500 md:text-sm'>
-            Suivez vos prospects à travers le pipeline commercial.
-          </p>
-        </div>
+      <section className='mt-2 flex flex-col gap-4'>
+        <LeadsOnboardingCarousel
+          onAddLead={() => {
+            if (!isHoldingMode) setSheetOpen(true);
+          }}
+          onImport={() => {
+            if (!isHoldingMode) setImportSheetOpen(true);
+          }}
+          onShowPipeline={() => setViewMode('kanban')}
+        />
 
-        <div className='flex w-full min-w-0 flex-col gap-3 sm:gap-4 lg:w-auto lg:items-end'>
+        <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+          <div className='min-w-0'>
+            <h1 className='text-xl font-semibold text-primary md:text-2xl'>
+              Leads
+            </h1>
+            <p className='text-xs text-gray-500 md:text-sm'>
+              Suivez vos prospects à travers le pipeline commercial.
+            </p>
+          </div>
+
           <div
             className='flex shrink-0 self-start rounded-full bg-white p-0.5 shadow-neu'
             role='group'
@@ -502,51 +540,64 @@ function LeadsPageInner() {
               </button>
             ))}
           </div>
+        </div>
 
-          <div className='grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:w-auto lg:flex-wrap lg:justify-end'>
-            <button
-              type='button'
-              onClick={() => setSheetOpen(true)}
-              disabled={isHoldingMode}
-              title={
-                isHoldingMode
-                  ? 'Sélectionnez une filiale pour ajouter un lead'
-                  : undefined
-              }
-              className='inline-flex h-10 w-full items-center justify-center gap-2 rounded-full bg-primary px-3 py-2 text-xs font-medium text-white shadow-neu sm:col-span-2 lg:col-span-1 lg:w-auto disabled:opacity-50 disabled:cursor-not-allowed'
-            >
-              <Plus className='h-3.5 w-3.5 shrink-0' /> Ajouter un lead
-            </button>
-            <button
-              type='button'
-              onClick={() => !isHoldingMode && setImportSheetOpen(true)}
-              disabled={isHoldingMode}
-              title={
-                isHoldingMode
-                  ? 'Sélectionnez une filiale pour importer des leads'
-                  : undefined
-              }
-              className='inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-neu hover:bg-gray-50 lg:w-auto disabled:opacity-50 disabled:cursor-not-allowed'
-            >
-              <FileSpreadsheet className='h-3.5 w-3.5 shrink-0' />
-              <span className='truncate'>Importer Excel</span>
-            </button>
-            <button
-              type='button'
-              onClick={handleExport}
-              disabled={exporting}
-              className='inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-neu hover:bg-gray-50 disabled:opacity-60 sm:col-span-2 lg:col-span-1 lg:w-auto'
-            >
-              <FileSpreadsheet className='h-3.5 w-3.5 shrink-0' />
-              <span className='truncate'>
-                {exporting ? 'Export...' : 'Exporter les leads'}
-              </span>
-            </button>
-          </div>
+        <div
+          id='leads-actions'
+          className='scroll-mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end'
+          role='group'
+          aria-label='Actions prospects'
+        >
+          <button
+            type='button'
+            onClick={() => setSheetOpen(true)}
+            disabled={isHoldingMode}
+            title={
+              isHoldingMode
+                ? 'Sélectionnez une filiale pour ajouter un lead'
+                : undefined
+            }
+            className='col-span-2 inline-flex h-10 items-center justify-center gap-2 rounded-full bg-primary px-4 text-xs font-medium text-white shadow-neu transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 sm:order-3 sm:col-span-1 sm:min-w-42'
+          >
+            <Plus className='h-3.5 w-3.5 shrink-0' />
+            <span className='truncate'>Ajouter un lead</span>
+          </button>
+
+          <button
+            type='button'
+            onClick={() => !isHoldingMode && setImportSheetOpen(true)}
+            disabled={isHoldingMode}
+            title={
+              isHoldingMode
+                ? 'Sélectionnez une filiale pour importer des leads'
+                : 'Importer depuis Excel'
+            }
+            className='inline-flex h-10 items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-3.5 text-xs font-medium text-gray-700 shadow-neu transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 sm:min-w-38'
+          >
+            <Upload className='h-3.5 w-3.5 shrink-0' />
+            <span className='truncate'>Importer</span>
+            <span className='hidden md:inline truncate'>Excel</span>
+          </button>
+
+          <button
+            type='button'
+            onClick={handleExport}
+            disabled={exporting}
+            title='Exporter les leads'
+            className='inline-flex h-10 items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-3.5 text-xs font-medium text-gray-700 shadow-neu transition hover:bg-gray-50 disabled:opacity-60 sm:min-w-38'
+          >
+            <Download className='h-3.5 w-3.5 shrink-0' />
+            <span className='truncate'>
+              {exporting ? 'Export…' : 'Exporter'}
+            </span>
+          </button>
         </div>
       </section>
 
-      <NeumoCard className='mt-4 p-4 bg-white flex flex-col gap-4'>
+      <NeumoCard
+        id='leads-pipeline'
+        className='mt-4 scroll-mt-4 p-4 bg-white flex flex-col gap-4'
+      >
         <div className='flex flex-col gap-4'>
           <LeadSearchBar
             query={query}
@@ -662,7 +713,7 @@ function LeadsPageInner() {
                   setSelectedViewId('');
                   setFilters((prev) => ({ ...prev, source: e.target.value }));
                 }}
-                placeholder='Ex: Facebook, WhatsApp...'
+                placeholder='Ex: Facebook, LinkedIn, Tik Tok...'
                 className='h-8 rounded-full border border-gray-200 bg-white px-3 text-[11px] text-gray-700'
               />
             </div>
@@ -758,168 +809,250 @@ function LeadsPageInner() {
           <>
             {viewMode === 'liste' && (
               <div className='flex flex-col gap-4'>
-                <div className='overflow-x-auto mt-2'>
+                <div className='mt-2'>
                   {filtered.length === 0 ? (
-                    <p className='py-8 text-center text-[12px] text-gray-500'>
-                      Aucun lead pour le moment. Ajoutez votre premier prospect.
-                    </p>
+                    <div className='rounded-2xl border border-dashed border-gray-200 bg-white/50 px-4 py-10 text-center'>
+                      <p className='text-[12px] text-gray-500'>
+                        Aucun prospect pour le moment. Ajoutez votre premier
+                        prospect.
+                      </p>
+                    </div>
                   ) : (
-                    <Table>
+                    <Table containerClassName='max-h-[min(70vh,720px)]'>
                       <TableHeader>
-                        <TableRow className='border-b border-gray-100 hover:bg-transparent'>
-                          <TableHead className='text-[11px] font-medium text-gray-500'>
-                            Nom
-                          </TableHead>
-                          {isHoldingMode && (
-                            <TableHead className='text-[11px] font-medium text-gray-500'>
-                              Société
-                            </TableHead>
-                          )}
-                          <TableHead className='text-[11px] font-medium text-gray-500'>
-                            Entreprise
-                          </TableHead>
-                          <TableHead className='text-[11px] font-medium text-gray-500'>
+                        <TableRow className='hover:bg-transparent'>
+                          <TableHead>Entreprise</TableHead>
+                          {isHoldingMode && <TableHead>Société CRM</TableHead>}
+                          <TableHead>Contacts</TableHead>
+                          <TableHead className='hidden md:table-cell'>
                             Domaine
                           </TableHead>
-                          <TableHead className='text-[11px] font-medium text-gray-500'>
-                            Localisation
+                          <TableHead className='hidden lg:table-cell'>
+                            Quartier, commune
                           </TableHead>
-                          <TableHead className='text-[11px] font-medium text-gray-500'>
-                            Email
-                          </TableHead>
-                          <TableHead className='text-[11px] font-medium text-gray-500'>
-                            Téléphone
-                          </TableHead>
-                          <TableHead className='text-[11px] font-medium text-gray-500'>
-                            Statut
-                          </TableHead>
-                          <TableHead className='text-[11px] font-medium text-gray-500 text-right'>
-                            Actions
-                          </TableHead>
+                          <TableHead>{NEGOTIATION_STAGE_FIELD_LABEL}</TableHead>
+                          <TableHead className='text-right'>Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {paginatedLeads.map((lead) => (
-                          <TableRow
-                            key={lead.id}
-                            className='border-b border-gray-50 hover:bg-gray-50/60'
-                          >
-                            <TableCell className='py-2.5'>
-                              <div className='flex flex-col'>
-                                <span className='text-xs font-medium text-primary'>
-                                  {lead.firstName} {lead.lastName}
-                                </span>
-                                {lead.civility && (
-                                  <span className='text-[10px] text-gray-400'>
-                                    {lead.civility}
-                                  </span>
-                                )}
-                                {lead.jobTitle && (
-                                  <span className='text-[10px] text-gray-400'>
-                                    {lead.jobTitle}
-                                  </span>
-                                )}
-                              </div>
-                            </TableCell>
-                            {isHoldingMode && (
-                              <TableCell className='py-2.5 text-[11px] text-gray-600'>
-                                {lead.crmCompanyName ?? '—'}
+                        {paginatedLeads.map((lead) => {
+                          const company =
+                            lead.companyName?.trim() || 'Sans nom';
+                          const initials = company
+                            .split(/\s+/)
+                            .filter(Boolean)
+                            .slice(0, 2)
+                            .map((p) => p[0]?.toUpperCase() ?? '')
+                            .join('');
+                          const domains = lead.activityDomains ?? [];
+
+                          return (
+                            <TableRow
+                              key={lead.id}
+                              className='cursor-pointer group'
+                              onClick={() => router.push(`/leads/${lead.id}`)}
+                            >
+                              <TableCell>
+                                <div className='flex items-center gap-2.5 min-w-0'>
+                                  <div className='w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center text-[10px] font-semibold shrink-0 border border-primary/10'>
+                                    {initials || 'P'}
+                                  </div>
+                                  <div className='min-w-0'>
+                                    <p className='text-xs font-semibold text-primary truncate group-hover:underline'>
+                                      {company}
+                                    </p>
+                                    {lead.leadType ? (
+                                      <p className='text-[10px] text-gray-400 truncate'>
+                                        {formatLeadTypeLabel(lead.leadType)}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                </div>
                               </TableCell>
-                            )}
-                            <TableCell className='py-2.5 text-[11px] text-gray-600'>
-                              {lead.companyName ?? '—'}
-                            </TableCell>
-                            <TableCell className='py-2.5 text-[11px] text-gray-600'>
-                              {lead.activityDomains?.length
-                                ? lead.activityDomains.join(', ')
-                                : '—'}
-                            </TableCell>
-                            <TableCell className='py-2.5 text-[11px] text-gray-600'>
-                              {lead.location ?? '—'}
-                            </TableCell>
-                            <TableCell className='py-2.5 text-[11px] text-gray-600'>
-                              {lead.email ?? '—'}
-                            </TableCell>
-                            <TableCell className='py-2.5 text-[11px] text-gray-600'>
-                              {lead.phone ?? '—'}
-                            </TableCell>
-                            <TableCell className='py-2.5'>
-                              <span
-                                className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-medium ${
-                                  STATUS_STYLES[lead.status] ??
-                                  'bg-gray-100 text-gray-600 border border-gray-200'
-                                }`}
-                              >
-                                {STATUS_LABELS[lead.status] ?? lead.status}
-                              </span>
-                            </TableCell>
-                            <TableCell className='py-2.5 text-right'>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <button
-                                    type='button'
-                                    className='inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-50 text-gray-500 hover:text-primary border border-gray-100'
+                              {isHoldingMode && (
+                                <TableCell>
+                                  {lead.crmCompanyName ? (
+                                    <span className='truncate max-w-32 inline-block'>
+                                      {lead.crmCompanyName}
+                                    </span>
+                                  ) : (
+                                    <TableEmpty />
+                                  )}
+                                </TableCell>
+                              )}
+                              <TableCell>
+                                {(lead.contactsPreview?.length ?? 0) > 0 ? (
+                                  <div
+                                    className='flex max-w-72 flex-wrap gap-1'
                                     onClick={(e) => e.stopPropagation()}
                                   >
-                                    <MoreHorizontal className='w-4 h-4' />
-                                  </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent side='bottom' align='end'>
-                                  <DropdownMenuItem
-                                    onSelect={(e) => {
-                                      e.preventDefault();
-                                      router.push(`/leads/${lead.id}`);
-                                    }}
-                                  >
-                                    <Eye className='w-4 h-4 mr-2' />
-                                    Voir
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onSelect={(e) => {
-                                      e.preventDefault();
-                                      openLead(lead as unknown as Lead);
-                                    }}
-                                  >
-                                    <Pencil className='w-4 h-4 mr-2' />
-                                    Modifier
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    className='text-rose-600 focus:text-rose-600'
-                                    onSelect={async (e) => {
-                                      e.preventDefault();
-                                      if (
-                                        !confirm(
-                                          'Mettre ce prospect à la corbeille ? Il pourra être restauré par un responsable.',
-                                        )
-                                      )
-                                        return;
-                                      try {
-                                        const res = await fetch(
-                                          `/api/leads?id=${lead.id}`,
-                                          {
-                                            method: 'DELETE',
-                                          },
+                                    {lead.contactsPreview?.map((c) => {
+                                      const fullName =
+                                        `${c.firstName} ${c.lastName}`.trim();
+                                      const canOpen =
+                                        Boolean(c.id) &&
+                                        c.canViewFiche !== false;
+                                      const chip = (
+                                        <span className='inline-flex max-w-full items-center gap-1.5'>
+                                          <span className='flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[9px] font-semibold text-primary'>
+                                            {contactInitials(
+                                              c.firstName,
+                                              c.lastName,
+                                            )}
+                                          </span>
+                                          <span className='truncate'>
+                                            {fullName || 'Contact'}
+                                          </span>
+                                        </span>
+                                      );
+                                      if (!canOpen) {
+                                        return (
+                                          <span
+                                            key={c.id || fullName}
+                                            title='Vous ne pouvez pas ouvrir cette fiche'
+                                            className='inline-flex max-w-full rounded-full border border-gray-100 bg-gray-50 px-2 py-0.5 text-[11px] text-gray-400'
+                                          >
+                                            {chip}
+                                          </span>
                                         );
-                                        if (res.ok) {
-                                          setLeads((prev) =>
-                                            prev.filter(
-                                              (l) => l.id !== lead.id,
-                                            ),
-                                          );
-                                        }
-                                      } catch {
-                                        // silencieux
                                       }
-                                    }}
+                                      return (
+                                        <Link
+                                          key={c.id}
+                                          href={`/leads/${lead.id}/contacts/${c.id}`}
+                                          title={`Ouvrir la fiche de ${fullName}`}
+                                          className='inline-flex max-w-full rounded-full border border-gray-100 bg-white px-2 py-0.5 text-[11px] text-primary transition-colors hover:border-primary/30 hover:bg-gray-50'
+                                        >
+                                          {chip}
+                                        </Link>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <TableEmpty />
+                                )}
+                              </TableCell>
+                              <TableCell className='hidden md:table-cell'>
+                                {domains.length > 0 ? (
+                                  <div className='flex flex-wrap gap-1 max-w-56'>
+                                    <span
+                                      className='inline-flex max-w-full px-2 py-0.5 rounded-full bg-gray-50 border border-gray-100 text-[10px] text-gray-600 truncate'
+                                      title={domains[0]}
+                                    >
+                                      {domains[0]}
+                                    </span>
+                                    {domains.length > 1 ? (
+                                      <span className='inline-flex px-2 py-0.5 rounded-full bg-gray-50 border border-gray-100 text-[10px] text-gray-400'>
+                                        +{domains.length - 1}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                ) : (
+                                  <TableEmpty />
+                                )}
+                              </TableCell>
+                              <TableCell className='hidden lg:table-cell'>
+                                {lead.location || lead.geographicSituation ? (
+                                  <span className='inline-flex max-w-40 flex-col gap-0.5'>
+                                    {lead.location ? (
+                                      <span className='truncate'>{lead.location}</span>
+                                    ) : null}
+                                    {lead.geographicSituation ? (
+                                      <a
+                                        href={lead.geographicSituation}
+                                        target='_blank'
+                                        rel='noreferrer'
+                                        className='truncate text-primary hover:underline'
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        Carte
+                                      </a>
+                                    ) : null}
+                                  </span>
+                                ) : (
+                                  <TableEmpty />
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <span
+                                  className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-medium whitespace-nowrap ${
+                                    STATUS_STYLES[lead.status] ??
+                                    'bg-gray-100 text-gray-600 border border-gray-200'
+                                  }`}
+                                >
+                                  {STATUS_LABELS[lead.status] ?? lead.status}
+                                </span>
+                              </TableCell>
+                              <TableCell className='text-right'>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <button
+                                      type='button'
+                                      className='inline-flex items-center justify-center w-8 h-8 rounded-full bg-white text-gray-500 hover:text-primary border border-gray-100 shadow-sm opacity-80 group-hover:opacity-100 transition'
+                                      onClick={(e) => e.stopPropagation()}
+                                      aria-label='Actions'
+                                    >
+                                      <MoreHorizontal className='w-4 h-4' />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent
+                                    side='bottom'
+                                    align='end'
                                   >
-                                    <Trash2 className='w-4 h-4 mr-2' />
-                                    Mettre à la corbeille
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                                    <DropdownMenuItem
+                                      onSelect={(e) => {
+                                        e.preventDefault();
+                                        router.push(`/leads/${lead.id}`);
+                                      }}
+                                    >
+                                      <Eye className='w-4 h-4 mr-2' />
+                                      Voir
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onSelect={(e) => {
+                                        e.preventDefault();
+                                        openLead(lead as unknown as Lead);
+                                      }}
+                                    >
+                                      <Pencil className='w-4 h-4 mr-2' />
+                                      Modifier
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      className='text-rose-600 focus:text-rose-600'
+                                      onSelect={async (e) => {
+                                        e.preventDefault();
+                                        if (
+                                          !confirm(
+                                            'Mettre ce prospect à la corbeille ? Il pourra être restauré par un responsable.',
+                                          )
+                                        )
+                                          return;
+                                        try {
+                                          const res = await fetch(
+                                            `/api/prospects/${lead.id}`,
+                                            { method: 'DELETE' },
+                                          );
+                                          if (res.ok) {
+                                            setLeads((prev) =>
+                                              prev.filter(
+                                                (l) => l.id !== lead.id,
+                                              ),
+                                            );
+                                          }
+                                        } catch {
+                                          // silencieux
+                                        }
+                                      }}
+                                    >
+                                      <Trash2 className='w-4 h-4 mr-2' />
+                                      Mettre à la corbeille
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   )}
@@ -995,7 +1128,7 @@ function LeadsPageInner() {
 
             {viewMode === 'grid' && (
               <>
-                <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:hidden'>
+                <div className='grid grid-cols-1 items-start gap-4 md:grid-cols-2 lg:hidden'>
                   {filtered.map((lead) => (
                     <LeadCard
                       key={lead.id}
@@ -1011,7 +1144,7 @@ function LeadsPageInner() {
                 </div>
 
                 <div className='hidden flex-col gap-4 lg:flex'>
-                  <div className='grid grid-cols-3 gap-4'>
+                  <div className='grid grid-cols-3 items-start gap-4'>
                     {paginatedLeads.map((lead) => (
                       <LeadCard
                         key={lead.id}
@@ -1136,23 +1269,18 @@ function LeadsPageInner() {
         )}
       </NeumoCard>
 
-      <LeadCreateSheet
+      <ProspectCreateSheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        onCreated={(lead) =>
+        onCreated={(prospect) =>
           setLeads((prev) => [
             {
-              id: lead.id,
-              firstName: lead.firstName,
-              lastName: lead.lastName,
-              email: lead.email,
-              phone: lead.phone,
-              source: lead.source,
-              companyName: lead.companyName,
-              jobTitle: lead.jobTitle,
-              location: lead.location,
-              notes: lead.notes ?? undefined,
-              status: lead.status ?? 'NEW',
+              id: prospect.id,
+              firstName: '',
+              lastName: '',
+              companyName: prospect.name,
+              status: 'EN_PROSPECTION',
+              jobTitle: '1 contact',
             },
             ...prev,
           ])

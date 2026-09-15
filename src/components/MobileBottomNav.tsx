@@ -21,7 +21,7 @@ const LEFT_TABS = [
 ] as const;
 
 const RIGHT_TABS = [
-  { icon: UserPlus, label: 'Leads', href: '/leads' },
+  { icon: UserPlus, label: 'Prospects', href: '/leads' },
   { icon: Building2, label: 'Clients', href: '/clients' },
 ] as const;
 

@@ -127,13 +127,19 @@ export default function ForgotPasswordPage() {
 
           <p className='text-[10px] leading-relaxed text-slate-500'>
             En poursuivant, vous acceptez nos{' '}
-            <span className='font-medium text-sky-700'>
+            <a
+              href='/legal/cgu'
+              className='font-medium text-primary hover:underline'
+            >
               Conditions d&apos;utilisation
-            </span>{' '}
+            </a>{' '}
             et notre{' '}
-            <span className='font-medium text-sky-700'>
+            <a
+              href='/legal/confidentialite'
+              className='font-medium text-primary hover:underline'
+            >
               Politique de confidentialité
-            </span>
+            </a>
             .
           </p>
         </div>

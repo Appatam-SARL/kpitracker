@@ -25,12 +25,14 @@ const PROFILE_NAV_ITEM: SidebarItemDef = {
   icon: User,
   label: 'Profil',
   href: '/profile',
+  section: 'systeme',
 };
 
 const COMMERCIALES_NAV_ITEM: SidebarItemDef = {
   icon: Users,
   label: 'Commerciales',
   href: '/users?role=agent',
+  section: 'systeme',
 };
 
 function isNavItemActive(pathname: string, href: string): boolean {
@@ -169,7 +171,7 @@ export default function MobileHeader() {
           >
             <span className='flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-100 bg-white shadow-neu-soft'>
               <Image
-                src='/kpitracker-mark.svg'
+                src='/kpitracker-mark.png'
                 alt=''
                 width={28}
                 height={28}

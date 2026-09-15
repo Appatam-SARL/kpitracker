@@ -5,9 +5,7 @@ import {
   type ResolvedGroupCompanyScope,
 } from '@/lib/group-scope-roles';
 import { getPeriodLabel } from '@/lib/goalPeriods';
-import { formatLeadName } from '@/lib/user-action-log';
 import { prisma } from '@/lib/prisma';
-import type { Prisma } from '@prisma/client';
 import { Prisma as PrismaNamespace } from '@prisma/client';
 import { rm, unlink } from 'fs/promises';
 import path from 'path';
@@ -93,35 +91,44 @@ export async function listTrashItems(
   const items: TrashItemDto[] = [];
 
   if (!typeFilter || typeFilter === 'LEAD') {
-    const leads = await prisma.lead.findMany({
-      where: { ...companyFilter, ...trashedOnlyWhere },
+    const prospects = await prisma.prospect.findMany({
+      where: { ...trashedOnlyWhere },
       select: {
         id: true,
-        firstName: true,
-        lastName: true,
+        name: true,
         status: true,
-        companyId: true,
         deletedAt: true,
-        deletedBy: { select: { id: true, name: true } },
-        ...(includeCompanyNames
-          ? { company: { select: { name: true } } }
-          : {}),
+        deletedBy: {
+          select: {
+            id: true,
+            name: true,
+            companyId: true,
+            ...(includeCompanyNames
+              ? { company: { select: { name: true } } }
+              : {}),
+          },
+        },
       },
       orderBy: { deletedAt: 'desc' },
     });
-    for (const lead of leads) {
-      const label = formatLeadName(lead.firstName, lead.lastName);
+    for (const prospect of prospects) {
+      const companyId = prospect.deletedBy?.companyId;
+      if (!companyId || !userCompanyInScope(companyId, scope)) continue;
+      const label = prospect.name;
       if (!matchesSearch(label, q)) continue;
       const dto = toDto('LEAD', {
-        id: lead.id,
-        deletedAt: lead.deletedAt,
-        deletedBy: lead.deletedBy,
-        companyId: lead.companyId,
+        id: prospect.id,
+        deletedAt: prospect.deletedAt,
+        deletedBy: prospect.deletedBy
+          ? { id: prospect.deletedBy.id, name: prospect.deletedBy.name }
+          : null,
+        companyId,
         company: includeCompanyNames
-          ? (lead as { company?: { name: string } }).company
+          ? (prospect.deletedBy as { company?: { name: string } } | null)
+              ?.company
           : null,
         label,
-        metadata: { status: lead.status },
+        metadata: { status: prospect.status },
       });
       if (dto) items.push(dto);
     }
@@ -200,50 +207,48 @@ export async function listTrashItems(
   }
 
   if (!typeFilter || typeFilter === 'ATTACHMENT') {
-    const leadCompanyWhere: Prisma.LeadWhereInput = {
-      ...companyFilter,
-    };
-    const attachments = await prisma.leadAttachment.findMany({
-      where: {
-        ...trashedOnlyWhere,
-        lead: leadCompanyWhere,
-      },
+    const attachments = await prisma.prospectAttachment.findMany({
+      where: { ...trashedOnlyWhere },
       select: {
         id: true,
         fileName: true,
         fileType: true,
-        leadId: true,
+        prospectId: true,
         deletedAt: true,
-        deletedBy: { select: { id: true, name: true } },
-        lead: {
+        deletedBy: {
           select: {
+            id: true,
+            name: true,
             companyId: true,
-            firstName: true,
-            lastName: true,
             ...(includeCompanyNames
               ? { company: { select: { name: true } } }
               : {}),
           },
         },
+        prospect: { select: { name: true } },
       },
       orderBy: { deletedAt: 'desc' },
     });
     for (const att of attachments) {
+      const companyId = att.deletedBy?.companyId;
+      if (!companyId || !userCompanyInScope(companyId, scope)) continue;
       const label = att.fileName;
       if (!matchesSearch(label, q)) continue;
       const dto = toDto('ATTACHMENT', {
         id: att.id,
         deletedAt: att.deletedAt,
-        deletedBy: att.deletedBy,
-        companyId: att.lead.companyId,
+        deletedBy: att.deletedBy
+          ? { id: att.deletedBy.id, name: att.deletedBy.name }
+          : null,
+        companyId,
         company: includeCompanyNames
-          ? (att.lead as { company?: { name: string } }).company
+          ? (att.deletedBy as { company?: { name: string } } | null)?.company
           : null,
         label,
         metadata: {
           fileType: att.fileType,
-          leadId: att.leadId,
-          leadName: formatLeadName(att.lead.firstName, att.lead.lastName),
+          leadId: att.prospectId,
+          leadName: att.prospect.name,
         },
       });
       if (dto) items.push(dto);
@@ -294,7 +299,7 @@ export async function softDeleteLead(
   actorId: string,
   leadId: string,
 ): Promise<void> {
-  await prisma.lead.update({
+  await prisma.prospect.update({
     where: { id: leadId },
     data: { deletedAt: new Date(), deletedById: actorId },
   });
@@ -324,7 +329,7 @@ export async function softDeleteAttachment(
   actorId: string,
   attachmentId: string,
 ): Promise<void> {
-  await prisma.leadAttachment.update({
+  await prisma.prospectAttachment.update({
     where: { id: attachmentId },
     data: { deletedAt: new Date(), deletedById: actorId },
   });
@@ -338,32 +343,36 @@ export async function restoreTrashItem(
 ): Promise<TrashItemDto> {
   switch (entityType) {
     case 'LEAD': {
-      const lead = await prisma.lead.findFirst({
+      const lead = await prisma.prospect.findFirst({
         where: { id, ...trashedOnlyWhere },
         select: {
           id: true,
-          firstName: true,
-          lastName: true,
-          companyId: true,
+          name: true,
           status: true,
           deletedAt: true,
+          deletedBy: { select: { companyId: true } },
         },
       });
       if (!lead?.deletedAt) {
         throw new TrashError('Prospect introuvable en corbeille', 404);
       }
-      await assertTrashAccessToCompany(actor, scope, lead.companyId);
-      await prisma.lead.update({
+      const companyId =
+        lead.deletedBy?.companyId ?? actor.companyId ?? '';
+      if (!companyId) {
+        throw new TrashError('Prospect introuvable en corbeille', 404);
+      }
+      await assertTrashAccessToCompany(actor, scope, companyId);
+      await prisma.prospect.update({
         where: { id },
         data: { deletedAt: null, deletedById: null },
       });
       return {
         id: lead.id,
         entityType: 'LEAD',
-        label: formatLeadName(lead.firstName, lead.lastName),
+        label: lead.name,
         deletedAt: lead.deletedAt.toISOString(),
         deletedBy: null,
-        companyId: lead.companyId,
+        companyId,
         metadata: { status: lead.status },
       };
     }
@@ -434,17 +443,23 @@ export async function restoreTrashItem(
       };
     }
     case 'ATTACHMENT': {
-      const att = await prisma.leadAttachment.findFirst({
+      const att = await prisma.prospectAttachment.findFirst({
         where: { id, ...trashedOnlyWhere },
         include: {
-          lead: { select: { companyId: true, firstName: true, lastName: true } },
+          prospect: { select: { name: true } },
+          deletedBy: { select: { companyId: true } },
         },
       });
       if (!att?.deletedAt) {
         throw new TrashError('Pièce jointe introuvable en corbeille', 404);
       }
-      await assertTrashAccessToCompany(actor, scope, att.lead.companyId);
-      await prisma.leadAttachment.update({
+      const companyId =
+        att.deletedBy?.companyId ?? actor.companyId ?? '';
+      if (!companyId) {
+        throw new TrashError('Pièce jointe introuvable en corbeille', 404);
+      }
+      await assertTrashAccessToCompany(actor, scope, companyId);
+      await prisma.prospectAttachment.update({
         where: { id },
         data: { deletedAt: null, deletedById: null },
       });
@@ -454,10 +469,10 @@ export async function restoreTrashItem(
         label: att.fileName,
         deletedAt: att.deletedAt.toISOString(),
         deletedBy: null,
-        companyId: att.lead.companyId,
+        companyId,
         metadata: {
-          leadId: att.leadId,
-          leadName: formatLeadName(att.lead.firstName, att.lead.lastName),
+          leadId: att.prospectId,
+          leadName: att.prospect.name,
         },
       };
     }
@@ -492,23 +507,28 @@ export async function purgeTrashItem(
 ): Promise<void> {
   switch (entityType) {
     case 'LEAD': {
-      const lead = await prisma.lead.findFirst({
+      const lead = await prisma.prospect.findFirst({
         where: { id, ...trashedOnlyWhere },
         select: {
           id: true,
-          companyId: true,
+          deletedBy: { select: { companyId: true } },
           attachments: { select: { storagePath: true } },
         },
       });
       if (!lead) {
         throw new TrashError('Prospect introuvable en corbeille', 404);
       }
-      await assertTrashAccessToCompany(actor, scope, lead.companyId);
+      const companyId =
+        lead.deletedBy?.companyId ?? actor.companyId ?? '';
+      if (!companyId) {
+        throw new TrashError('Prospect introuvable en corbeille', 404);
+      }
+      await assertTrashAccessToCompany(actor, scope, companyId);
       for (const att of lead.attachments) {
         await removeAttachmentFile(att.storagePath);
       }
       await removeLeadUploadDir(lead.id);
-      await prisma.lead.delete({ where: { id } });
+      await prisma.prospect.delete({ where: { id } });
       return;
     }
     case 'USER': {
@@ -549,16 +569,21 @@ export async function purgeTrashItem(
       return;
     }
     case 'ATTACHMENT': {
-      const att = await prisma.leadAttachment.findFirst({
+      const att = await prisma.prospectAttachment.findFirst({
         where: { id, ...trashedOnlyWhere },
-        include: { lead: { select: { companyId: true } } },
+        include: { deletedBy: { select: { companyId: true } } },
       });
       if (!att) {
         throw new TrashError('Pièce jointe introuvable en corbeille', 404);
       }
-      await assertTrashAccessToCompany(actor, scope, att.lead.companyId);
+      const companyId =
+        att.deletedBy?.companyId ?? actor.companyId ?? '';
+      if (!companyId) {
+        throw new TrashError('Pièce jointe introuvable en corbeille', 404);
+      }
+      await assertTrashAccessToCompany(actor, scope, companyId);
       await removeAttachmentFile(att.storagePath);
-      await prisma.leadAttachment.delete({ where: { id } });
+      await prisma.prospectAttachment.delete({ where: { id } });
       return;
     }
     default:

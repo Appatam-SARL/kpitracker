@@ -7,6 +7,7 @@ import SkeletonLoader from "@/components/SkeletonLoader";
 import ProductCreateSheet from "@/components/ProductCreateSheet";
 import ServiceCreateSheet from "@/components/ServiceCreateSheet";
 import GroupCompanySelect from "@/components/GroupCompanySelect";
+import ProductsServicesOnboardingCarousel from "@/components/products-services/ProductsServicesOnboardingCarousel";
 import { withDashboardLayout } from "@/components/layouts/withDashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGroupCompanyScope } from "@/hooks/useGroupCompanyScope";
@@ -131,8 +132,30 @@ function ProductsServicesPageInner() {
 
   return (
     <>
-      <NeumoCard className="rounded-3xl bg-[#f5f5ff] shadow-neu-soft border border-white/50 backdrop-blur-sm mt-4 p-4 flex flex-col gap-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <section className="mt-2 flex flex-col gap-4">
+        <ProductsServicesOnboardingCarousel
+          onAddProduct={() => {
+            if (!canCreateForSelection) return;
+            setTab("products");
+            setProductSheetOpen(true);
+          }}
+          onAddService={() => {
+            if (!canCreateForSelection) return;
+            setTab("services");
+            setServiceSheetOpen(true);
+          }}
+          onShowCatalog={() => setTab("products")}
+        />
+      </section>
+
+      <NeumoCard
+        id="catalog-liste"
+        className="scroll-mt-4 rounded-3xl bg-[#f5f5ff] shadow-neu-soft border border-white/50 backdrop-blur-sm mt-4 p-4 flex flex-col gap-4"
+      >
+        <div
+          id="catalog-actions"
+          className="scroll-mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+        >
           <div>
             <h1 className="text-lg font-semibold text-gray-800">
               Produits et services

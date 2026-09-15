@@ -16,16 +16,39 @@ if (!connectionString) {
 
 const adapter = new PrismaPg({ connectionString });
 
-// Évite de recréer un client Prisma en dev (hot reload)
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+/**
+ * Incrémentez après un changement d’enum / modèle incompatible avec le
+ * singleton `globalThis.prisma` du hot-reload Next.js.
+ */
+const PRISMA_CLIENT_EPOCH = "negotiation-stage-v1";
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+const globalForPrisma = globalThis as unknown as {
+  prisma?: PrismaClient;
+  prismaEpoch?: string;
+};
+
+function createPrismaClient() {
+  return new PrismaClient({
     adapter,
     log: ["error", "warn"],
   });
+}
+
+function isStalePrismaClient(client: PrismaClient): boolean {
+  if (typeof (client as { prospect?: unknown }).prospect === "undefined") {
+    return true;
+  }
+  if (globalForPrisma.prismaEpoch !== PRISMA_CLIENT_EPOCH) {
+    return true;
+  }
+  return false;
+}
+
+const cached = globalForPrisma.prisma;
+export const prisma =
+  cached && !isStalePrismaClient(cached) ? cached : createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
+  globalForPrisma.prismaEpoch = PRISMA_CLIENT_EPOCH;
 }

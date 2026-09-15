@@ -17,9 +17,9 @@ export async function GET(req: Request) {
     if (whereBase instanceof NextResponse) return whereBase;
 
     const [total, converted] = await Promise.all([
-      prisma.lead.count({ where: whereBase }),
-      prisma.lead.count({
-        where: { ...whereBase, status: "CONVERTED" },
+      prisma.prospect.count({ where: whereBase }),
+      prisma.prospect.count({
+        where: { ...whereBase, status: "VENTE_CONCLUE" },
       }),
     ]);
 

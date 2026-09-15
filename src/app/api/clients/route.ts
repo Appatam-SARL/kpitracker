@@ -1,17 +1,24 @@
-import { getCurrentUser } from "@/lib/auth";
-import { logUserAction, USER_ACTION_CODES } from "@/lib/user-action-log";
+import { getCurrentUser } from '@/lib/auth';
+import { logUserAction, USER_ACTION_CODES } from '@/lib/user-action-log';
 import {
   buildConversionSaleItems,
   computeLeadInterestsRevenue,
   CONVERT_REQUIRES_PIVOT_INTERESTS_MESSAGE,
-} from "@/lib/lead-conversion";
-import { prisma } from "@/lib/prisma";
-import { NextResponse } from "next/server";
-import { z } from "zod";
+} from '@/lib/lead-conversion';
+import { requireGroupProspectsAccess } from '@/lib/prospect-access';
+import { prisma } from '@/lib/prisma';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 
-const convertLeadSchema = z.object({
-  leadId: z.string().min(1),
-});
+const convertSchema = z
+  .object({
+    contactId: z.string().min(1).optional(),
+    /** Alias : id contact (rétrocompat leadId) */
+    leadId: z.string().min(1).optional(),
+  })
+  .refine((v) => Boolean(v.contactId || v.leadId), {
+    message: 'contactId requis',
+  });
 
 type PrismaTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
@@ -19,12 +26,8 @@ export async function GET() {
   try {
     const user = await getCurrentUser();
     if (!user) {
-      return NextResponse.json(
-        { error: "Non authentifié" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
-
     if (!user.companyId) {
       return NextResponse.json(
         { error: "Aucune société associée à l'utilisateur" },
@@ -40,37 +43,48 @@ export async function GET() {
           select: { id: true, name: true, email: true, role: true },
         },
       },
-      orderBy: { name: "asc" },
+      orderBy: { name: 'asc' },
     });
     return NextResponse.json(clients);
   } catch (error) {
-    console.error("GET /api/clients error", error);
+    console.error('GET /api/clients error', error);
     return NextResponse.json(
-      { error: "Impossible de récupérer les clients" },
+      { error: 'Impossible de récupérer les clients' },
       { status: 500 },
     );
   }
 }
 
-// Convertit un lead en client à partir de son id
+/** Convertit un contact prospect → client de la société de la commerciale. */
 export async function POST(req: Request) {
   try {
     const user = await getCurrentUser();
     if (!user) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+    }
+    if (!user.companyId) {
       return NextResponse.json(
-        { error: "Non authentifié" },
-        { status: 401 },
+        { error: "Aucune société associée à l'utilisateur" },
+        { status: 400 },
       );
     }
+    const access = await requireGroupProspectsAccess(user);
+    if (access !== true) return access;
 
     const json = await req.json();
-    const { leadId } = convertLeadSchema.parse(json);
+    const parsed = convertSchema.parse(json);
+    const contactId = parsed.contactId || parsed.leadId!;
 
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
+    const contact = await prisma.prospectContact.findFirst({
+      where: { id: contactId, deletedAt: null },
       include: {
-        company: true,
+        prospect: {
+          include: {
+            activityDomains: { select: { domain: true } },
+          },
+        },
         productInterests: {
+          where: { userId: user.id },
           select: {
             productId: true,
             customName: true,
@@ -79,6 +93,7 @@ export async function POST(req: Request) {
           },
         },
         serviceInterests: {
+          where: { userId: user.id },
           select: {
             serviceId: true,
             customName: true,
@@ -86,23 +101,19 @@ export async function POST(req: Request) {
             service: { select: { name: true } },
           },
         },
-        activityDomains: {
-          select: { domain: true },
-          orderBy: { domain: 'asc' },
-        },
       },
     });
 
-    if (!lead) {
+    if (!contact || contact.prospect.deletedAt) {
       return NextResponse.json(
-        { error: "Lead introuvable" },
+        { error: 'Contact / prospect introuvable' },
         { status: 404 },
       );
     }
 
     if (
-      lead.productInterests.length === 0 &&
-      lead.serviceInterests.length === 0
+      contact.productInterests.length === 0 &&
+      contact.serviceInterests.length === 0
     ) {
       return NextResponse.json(
         { error: CONVERT_REQUIRES_PIVOT_INTERESTS_MESSAGE },
@@ -111,16 +122,17 @@ export async function POST(req: Request) {
     }
 
     const conversionRevenue = computeLeadInterestsRevenue(
-      lead.productInterests,
-      lead.serviceInterests,
+      contact.productInterests,
+      contact.serviceInterests,
     );
     const conversionDate = new Date();
+    const prospect = contact.prospect;
 
     const result = await prisma.$transaction(async (tx: PrismaTx) => {
-      const customProductInterests = lead.productInterests.filter(
+      const customProductInterests = contact.productInterests.filter(
         (i) => !i.productId && i.customName,
       );
-      const customServiceInterests = lead.serviceInterests.filter(
+      const customServiceInterests = contact.serviceInterests.filter(
         (i) => !i.serviceId && i.customName,
       );
       const customInterestNotesLines = [
@@ -131,130 +143,111 @@ export async function POST(req: Request) {
           (i) => `- Service (autre): ${i.customName} (${i.estimatedValue} FCFA)`,
         ),
       ];
-      const appendedCustomInterestsNotes =
-        customInterestNotesLines.length > 0
+      const notes = [
+        prospect.notes?.trim() || '',
+        contact.notes?.trim() || '',
+        customInterestNotesLines.length
           ? [
-              lead.notes?.trim() || '',
-              '',
-              'Intérêts personnalisés du prospect (hors catalogue):',
+              'Intérêts personnalisés (hors catalogue):',
               ...customInterestNotesLines,
-            ]
-              .filter((line, idx, arr) => !(idx === 0 && !line && arr[1] === ''))
-              .join('\n')
-          : lead.notes || undefined;
+            ].join('\n')
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
 
       const client = await tx.client.create({
         data: {
-          name: `${lead.firstName} ${lead.lastName}`.trim(),
-          contact: lead.phone || lead.email || undefined,
-          email: lead.email || undefined,
-          phone: lead.phone || undefined,
-          source: lead.source || undefined,
-          civility: lead.civility || undefined,
+          name: `${contact.firstName} ${contact.lastName}`.trim(),
+          contact: contact.phone || contact.email || undefined,
+          email: contact.email || undefined,
+          phone: contact.phone || undefined,
+          source: prospect.source || undefined,
+          civility: contact.civility || undefined,
           activityDomain:
-            lead.activityDomains.length > 0
-              ? lead.activityDomains.map((d) => d.domain).join(', ')
+            prospect.activityDomains.length > 0
+              ? prospect.activityDomains.map((d) => d.domain).join(', ')
               : undefined,
-          companyName: lead.companyName ?? lead.company?.name,
-          location: lead.location || undefined,
-          notes: appendedCustomInterestsNotes || undefined,
-          companyId: lead.companyId,
+          companyName: prospect.name,
+          location: prospect.location || undefined,
+          notes: notes || undefined,
+          companyId: user.companyId!,
           convertedById: user.id,
           convertedAt: conversionDate,
+          convertedFromProspectId: prospect.id,
           totalRevenue: conversionRevenue,
         },
       });
 
       if (conversionRevenue > 0) {
         const saleItems = buildConversionSaleItems(
-          lead.productInterests,
-          lead.serviceInterests,
+          contact.productInterests,
+          contact.serviceInterests,
         );
         await tx.sale.create({
           data: {
             clientId: client.id,
             userId: user.id,
-            companyId: lead.companyId,
+            companyId: user.companyId!,
             date: conversionDate,
             amount: conversionRevenue,
-            ...(saleItems.length > 0
-              ? { items: { create: saleItems } }
-              : {}),
+            ...(saleItems.length > 0 ? { items: { create: saleItems } } : {}),
           },
         });
       }
 
-      // Si des produits / services étaient déjà renseignés sur le lead,
-      // on les initialise comme intérêts du client avec une valeur estimative issue du lead.
-      const hasClientProductInterest =
-        (tx as any).clientProductInterest !== undefined;
-      const hasClientServiceInterest =
-        (tx as any).clientServiceInterest !== undefined;
-
-      const productInterestsSource = lead.productInterests
-        .filter((i) => !!i.productId)
-        .map((i) => ({
-        productId: i.productId as string,
-        estimatedValue: i.estimatedValue,
-      }));
-
-      const serviceInterestsSource = lead.serviceInterests
-        .filter((i) => !!i.serviceId)
-        .map((i) => ({
-        serviceId: i.serviceId as string,
-        estimatedValue: i.estimatedValue,
-      }));
-
-      if (hasClientProductInterest && productInterestsSource.length > 0) {
-        await (tx as any).clientProductInterest.createMany({
-          data: productInterestsSource.map((product) => ({
+      for (const i of contact.productInterests) {
+        if (!i.productId) continue;
+        await tx.clientProductInterest.create({
+          data: {
             clientId: client.id,
-            productId: product.productId,
-            estimatedValue: product.estimatedValue,
-          })),
+            productId: i.productId,
+            estimatedValue: i.estimatedValue ?? 0,
+          },
+        });
+      }
+      for (const i of contact.serviceInterests) {
+        if (!i.serviceId) continue;
+        await tx.clientServiceInterest.create({
+          data: {
+            clientId: client.id,
+            serviceId: i.serviceId,
+            estimatedValue: i.estimatedValue ?? 0,
+          },
         });
       }
 
-      if (hasClientServiceInterest && serviceInterestsSource.length > 0) {
-        await (tx as any).clientServiceInterest.createMany({
-          data: serviceInterestsSource.map((service) => ({
-            clientId: client.id,
-            serviceId: service.serviceId,
-            estimatedValue: service.estimatedValue,
-          })),
-        });
-      }
-
-      const updatedLead = await tx.lead.update({
-        where: { id: lead.id },
-        data: { status: "CONVERTED" },
+      await tx.prospectContact.update({
+        where: { id: contact.id },
+        data: { negotiationStage: 'VENTE_CONCLUE' },
       });
 
-      return { client, lead: updatedLead };
+      await tx.prospect.update({
+        where: { id: prospect.id },
+        data: { status: 'VENTE_CONCLUE' },
+      });
+
+      return client;
     });
 
     await logUserAction({
       user,
       action: USER_ACTION_CODES.CLIENT_CREATE,
       entityType: 'Client',
-      entityId: result.client.id,
-      summary: `Conversion du prospect en client : ${result.client.name}`,
-      metadata: { label: result.client.name, leadId: result.lead.id },
+      entityId: result.id,
+      summary: `Conversion contact ${contact.firstName} ${contact.lastName} → client`,
+      metadata: { prospectId: prospect.id, contactId: contact.id },
     });
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: error.issues.map((e) => e.message).join(", ") },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Données invalides' }, { status: 400 });
     }
-    console.error("POST /api/clients error", error);
+    console.error('POST /api/clients error', error);
     return NextResponse.json(
-      { error: "Impossible de convertir le lead en client" },
+      { error: 'Impossible de convertir en client' },
       { status: 500 },
     );
   }
 }
-

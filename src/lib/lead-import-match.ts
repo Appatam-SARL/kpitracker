@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { normalizeProspectName } from '@/lib/prospect-name';
 import { activeOnlyWhere } from '@/lib/trash';
 
 /** Chiffres uniquement pour comparer des numéros mal formatés. */
@@ -24,7 +25,7 @@ export function phonesMatchForImport(a: string, b: string): boolean {
 }
 
 export function normalizeCompanyNameForMatch(value: string): string {
-  return value.trim().toLowerCase();
+  return normalizeProspectName(value);
 }
 
 export function normalizeEmailForMatch(value: string): string {
@@ -32,7 +33,8 @@ export function normalizeEmailForMatch(value: string): string {
 }
 
 export type LeadImportMatchInput = {
-  companyId: string;
+  /** Ignoré (pool GROUP) — conservé pour compat appelants. */
+  companyId?: string;
   companyName: string;
   email?: string | null;
   phone?: string | null;
@@ -43,22 +45,24 @@ export type LeadImportMatchResult =
   | { kind: 'single'; leadId: string; assignedTo: string | null }
   | { kind: 'ambiguous' };
 
-function leadMatchesContact(
-  lead: { email: string | null; phone: string | null },
+function contactMatches(
+  contact: { email: string | null; phone: string | null },
   email: string,
   phoneDigits: string,
 ): boolean {
   const emailMatch =
     !!email &&
-    !!lead.email &&
-    normalizeEmailForMatch(lead.email) === email;
+    !!contact.email &&
+    normalizeEmailForMatch(contact.email) === email;
   const phoneMatch =
-    !!phoneDigits && !!lead.phone && phonesMatchForImport(lead.phone, phoneDigits);
+    !!phoneDigits &&
+    !!contact.phone &&
+    phonesMatchForImport(contact.phone, phoneDigits);
   return emailMatch || phoneMatch;
 }
 
 /**
- * Recherche un lead existant par entreprise + (email ou téléphone).
+ * Recherche un prospect existant par entreprise + (email ou téléphone contact).
  * Sans email ni téléphone → aucune correspondance (création).
  */
 export async function findLeadForImportRow(
@@ -76,17 +80,27 @@ export async function findLeadForImportRow(
     return { kind: 'none' };
   }
 
-  const candidates = await prisma.lead.findMany({
-    where: {
-      companyId: input.companyId,
-      companyName: { equals: companyName, mode: 'insensitive' },
-      ...activeOnlyWhere,
+  const nameNormalized = normalizeProspectName(companyName);
+  const prospect = await prisma.prospect.findFirst({
+    where: { nameNormalized, ...activeOnlyWhere },
+    select: {
+      id: true,
+      contacts: {
+        where: { deletedAt: null },
+        select: {
+          id: true,
+          email: true,
+          phone: true,
+          createdById: true,
+        },
+      },
     },
-    select: { id: true, email: true, phone: true, assignedTo: true },
   });
 
-  const matched = candidates.filter((lead) =>
-    leadMatchesContact(lead, email, phoneDigits),
+  if (!prospect) return { kind: 'none' };
+
+  const matched = prospect.contacts.filter((c) =>
+    contactMatches(c, email, phoneDigits),
   );
 
   if (matched.length === 0) return { kind: 'none' };
@@ -94,7 +108,7 @@ export async function findLeadForImportRow(
 
   return {
     kind: 'single',
-    leadId: matched[0].id,
-    assignedTo: matched[0].assignedTo,
+    leadId: prospect.id,
+    assignedTo: matched[0].createdById,
   };
 }

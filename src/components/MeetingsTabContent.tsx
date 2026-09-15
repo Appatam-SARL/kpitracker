@@ -8,6 +8,7 @@ interface MeetingsTabContentProps {
   meetings: Activity[];
   loading: boolean;
   leadId: string;
+  contactId?: string;
   leadName: string;
   onCreateSuccess?: (activity: Activity) => void;
 }
@@ -27,6 +28,7 @@ export default function MeetingsTabContent({
   meetings,
   loading,
   leadId,
+  contactId,
   leadName,
   onCreateSuccess,
 }: MeetingsTabContentProps) {
@@ -59,6 +61,7 @@ export default function MeetingsTabContent({
           type: "MEETING",
           content,
           leadId,
+          contactId: contactId || undefined,
           date: meetingDate,
         }),
       });

@@ -20,6 +20,7 @@ export async function GET() {
             id: true,
             name: true,
             plan: true,
+            kind: true,
             createdAt: true,
           },
         },

@@ -13,10 +13,16 @@ const AUTH_ROLE_COOKIE = 'auth_role';
 const MUST_CHANGE_PASSWORD_COOKIE = 'must_change_password';
 
 /** Routes accessibles sans connexion */
-const PUBLIC_PATHS = ['/login', '/login/mfa', '/forgot-password', '/reset-password'];
+const PUBLIC_PATHS = [
+  '/login',
+  '/login/mfa',
+  '/forgot-password',
+  '/reset-password',
+  '/legal',
+];
 
 /** Pages réservées à ADMIN et MANAGER (AGENT refusé selon roles-and-permissions) */
-const ADMIN_OR_MANAGER_PATHS = ['/users', '/settings', '/products-services', '/corbeille'];
+const ADMIN_OR_MANAGER_PATHS = ['/users', '/settings', '/products-services', '/corbeille', '/rapport'];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some(
@@ -72,8 +78,13 @@ function runMiddleware(request: NextRequest): NextResponse {
   }
 
   // Déjà connecté ET sur une page publique → redirection vers le dashboard
-  // (sauf le lien e-mail de réinitialisation, utilisable même si une session existe)
-  if (hasAuth && isPublicPath(pathname) && !isTokenResetPath) {
+  // (sauf le lien e-mail de réinitialisation et les pages légales)
+  if (
+    hasAuth &&
+    isPublicPath(pathname) &&
+    !isTokenResetPath &&
+    !pathname.startsWith('/legal')
+  ) {
     return redirectTo(request, '/');
   }
 
@@ -107,5 +118,7 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon\\.ico|favicon-.*\\.png|apple-touch-icon\\.png|apple-icon\\.png|icon\\.png|android-chrome-.*\\.png|site\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+  ],
 };
