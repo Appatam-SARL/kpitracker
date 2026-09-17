@@ -55,6 +55,7 @@ export async function GET(
     const prospect = await prisma.prospect.findFirst({
       where: { id, deletedAt: null },
       include: {
+        createdBy: { select: { id: true, name: true } },
         activityDomains: { orderBy: { domain: 'asc' } },
         contacts: {
           where: { deletedAt: null },
@@ -91,6 +92,9 @@ export async function GET(
 
     return NextResponse.json({
       ...prospect,
+      createdBy: prospect.createdBy
+        ? { id: prospect.createdBy.id, name: prospect.createdBy.name }
+        : null,
       activityDomains: prospect.activityDomains.map((d) => d.domain),
       socialLinks: normalizeProspectSocialLinks(
         prospect.socialLinks as

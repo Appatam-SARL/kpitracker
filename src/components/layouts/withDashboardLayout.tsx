@@ -15,6 +15,12 @@ export type ResolvedPageDynamicProps = {
   searchParams?: Record<string, string | string[] | undefined>;
 };
 
+export type DashboardLayoutShellProps = {
+  title?: string;
+  subtitle?: string;
+  titleIcon?: ComponentType<{ className?: string }>;
+};
+
 function unwrapPageProps(
   props: NextPageDynamicProps,
 ): ResolvedPageDynamicProps {
@@ -27,6 +33,7 @@ function unwrapPageProps(
 
 export function withDashboardLayout<P extends object>(
   PageComponent: ComponentType<P>,
+  shellProps?: DashboardLayoutShellProps,
 ) {
   const Wrapped: FC<P & NextPageDynamicProps> = (props) => {
     const { params, searchParams, ...rest } = props;
@@ -41,7 +48,11 @@ export function withDashboardLayout<P extends object>(
     } as P;
 
     return (
-      <DashboardShell>
+      <DashboardShell
+        title={shellProps?.title}
+        subtitle={shellProps?.subtitle}
+        titleIcon={shellProps?.titleIcon}
+      >
         <PageComponent {...pageProps} />
       </DashboardShell>
     );

@@ -30,6 +30,8 @@ interface ProspectCreateSheetProps {
   open: boolean;
   onClose: () => void;
   onCreated?: (prospect: { id: string; name: string }) => void;
+  /** Redirection après création (défaut : fiche Gestion Contacts). */
+  afterCreateHref?: (prospectId: string) => string;
 }
 
 type SearchItem = {
@@ -45,6 +47,7 @@ export default function ProspectCreateSheet({
   open,
   onClose,
   onCreated,
+  afterCreateHref,
 }: ProspectCreateSheetProps) {
   const router = useRouter();
   const { user } = useAuth();
@@ -126,7 +129,7 @@ export default function ProspectCreateSheet({
 
   const openExisting = (id: string) => {
     onClose();
-    router.push(`/leads/${id}`);
+    router.push(afterCreateHref ? afterCreateHref(id) : `/leads/${id}`);
   };
 
   const handleLogoChange = (file: File | null) => {
@@ -211,7 +214,11 @@ export default function ProspectCreateSheet({
 
       onCreated?.({ id: body.id, name: body.name });
       onClose();
-      router.push(`/leads/${body.id}`);
+      router.push(
+        afterCreateHref
+          ? afterCreateHref(body.id)
+          : `/leads/${body.id}`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur inattendue');
     } finally {

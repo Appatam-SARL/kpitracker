@@ -33,12 +33,10 @@ interface Service {
 function ProductsServicesPageInner() {
   const { user: authUser } = useAuth();
   const {
-    hasGroupScope,
     companyOptions,
     selectedCompanyId,
     setSelectedCompanyId,
     apiCompanyId,
-    scopeLabel,
   } = useGroupCompanyScope();
 
   const showCompanySelector = canManageCrossCompanyCatalog(authUser?.role);
@@ -126,10 +124,6 @@ function ProductsServicesPageInner() {
     setServices((prev) => [service, ...prev]);
   };
 
-  const pageSubtitle = showCompanySelector
-    ? `Catalogue de ${scopeLabel}.`
-    : "Gérez les produits et services de votre entreprise.";
-
   return (
     <>
       <section className="mt-2 flex flex-col gap-4">
@@ -152,49 +146,41 @@ function ProductsServicesPageInner() {
         id="catalog-liste"
         className="scroll-mt-4 rounded-3xl bg-[#f5f5ff] shadow-neu-soft border border-white/50 backdrop-blur-sm mt-4 p-4 flex flex-col gap-4"
       >
-        <div
-          id="catalog-actions"
-          className="scroll-mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
-        >
-          <div>
-            <h1 className="text-lg font-semibold text-gray-800">
-              Produits et services
-            </h1>
-            <p className="text-xs text-gray-500 mt-1">{pageSubtitle}</p>
+        {canCreate && (
+          <div
+            id="catalog-actions"
+            className="scroll-mt-4 flex flex-wrap items-center justify-end gap-2"
+          >
+            <button
+              type="button"
+              onClick={() => setProductSheetOpen(true)}
+              disabled={!canCreateForSelection}
+              title={
+                !canCreateForSelection
+                  ? "Sélectionnez une entreprise"
+                  : undefined
+              }
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-primary text-white text-xs font-medium shadow-neu hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-4 h-4" />
+              Ajouter un produit
+            </button>
+            <button
+              type="button"
+              onClick={() => setServiceSheetOpen(true)}
+              disabled={!canCreateForSelection}
+              title={
+                !canCreateForSelection
+                  ? "Sélectionnez une entreprise"
+                  : undefined
+              }
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-100 text-gray-700 border border-gray-200 text-xs font-medium shadow-neu-soft hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-4 h-4" />
+              Ajouter un service
+            </button>
           </div>
-          {canCreate && (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setProductSheetOpen(true)}
-                disabled={!canCreateForSelection}
-                title={
-                  !canCreateForSelection
-                    ? "Sélectionnez une entreprise"
-                    : undefined
-                }
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-primary text-white text-xs font-medium shadow-neu hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus className="w-4 h-4" />
-                Ajouter un produit
-              </button>
-              <button
-                type="button"
-                onClick={() => setServiceSheetOpen(true)}
-                disabled={!canCreateForSelection}
-                title={
-                  !canCreateForSelection
-                    ? "Sélectionnez une entreprise"
-                    : undefined
-                }
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-100 text-gray-700 border border-gray-200 text-xs font-medium shadow-neu-soft hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus className="w-4 h-4" />
-                Ajouter un service
-              </button>
-            </div>
-          )}
-        </div>
+        )}
 
         {showCompanySelector && (
           <GroupCompanySelect
@@ -339,4 +325,8 @@ function ProductsServicesPageInner() {
   );
 }
 
-export default withDashboardLayout(ProductsServicesPageInner);
+export default withDashboardLayout(ProductsServicesPageInner, {
+  title: 'Produits et services',
+  subtitle: 'Gérez les produits et services de votre entreprise.',
+  titleIcon: Package,
+});

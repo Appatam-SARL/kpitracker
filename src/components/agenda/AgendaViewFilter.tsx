@@ -1,8 +1,9 @@
-"use client";
+'use client';
 
-import { format } from "date-fns";
+import { format } from 'date-fns';
+import { DatePicker } from '@/components/ui/date-picker';
 
-export type AgendaView = "jour" | "semaine" | "mois" | "année" | "période";
+export type AgendaView = 'jour' | 'semaine' | 'mois' | 'année' | 'période';
 
 export interface CustomPeriod {
   start: Date;
@@ -18,11 +19,11 @@ interface AgendaViewFilterProps {
 }
 
 const OPTIONS: { value: AgendaView; label: string }[] = [
-  { value: "jour", label: "Jour" },
-  { value: "semaine", label: "Semaine" },
-  { value: "mois", label: "Mois" },
-  { value: "année", label: "Année" },
-  { value: "période", label: "Période" },
+  { value: 'jour', label: 'Jour' },
+  { value: 'semaine', label: 'Semaine' },
+  { value: 'mois', label: 'Mois' },
+  { value: 'année', label: 'Année' },
+  { value: 'période', label: 'Période' },
 ];
 
 /**
@@ -35,19 +36,19 @@ export default function AgendaViewFilter({
   customPeriod,
   onCustomPeriodChange,
 }: AgendaViewFilterProps) {
-  const startStr = customPeriod ? format(customPeriod.start, "yyyy-MM-dd") : "";
-  const endStr = customPeriod ? format(customPeriod.end, "yyyy-MM-dd") : "";
+  const startStr = customPeriod ? format(customPeriod.start, 'yyyy-MM-dd') : '';
+  const endStr = customPeriod ? format(customPeriod.end, 'yyyy-MM-dd') : '';
 
-  const handleStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const d = e.target.value ? new Date(e.target.value + "T00:00:00") : new Date();
+  const handleStartChange = (iso: string) => {
+    const d = iso ? new Date(`${iso}T00:00:00`) : new Date();
     onCustomPeriodChange?.({
       start: d,
       end: customPeriod?.end ?? d,
     });
   };
 
-  const handleEndChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const d = e.target.value ? new Date(e.target.value + "T23:59:59.999") : new Date();
+  const handleEndChange = (iso: string) => {
+    const d = iso ? new Date(`${iso}T23:59:59.999`) : new Date();
     onCustomPeriodChange?.({
       start: customPeriod?.start ?? d,
       end: d,
@@ -55,17 +56,17 @@ export default function AgendaViewFilter({
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-gray-100/80 border border-gray-100">
+    <div className='flex flex-col gap-3'>
+      <div className='flex flex-wrap items-center gap-1 p-1 rounded-xl bg-gray-100/80 border border-gray-100'>
         {OPTIONS.map((opt) => (
           <button
             key={opt.value}
-            type="button"
+            type='button'
             onClick={() => onChange(opt.value)}
             className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${
               value === opt.value
-                ? "bg-white text-primary shadow-neu-soft border border-white/50"
-                : "text-gray-600 hover:text-gray-800 hover:bg-white/50"
+                ? 'bg-white text-primary shadow-neu-soft border border-white/50'
+                : 'text-gray-600 hover:text-gray-800 hover:bg-white/50'
             }`}
           >
             {opt.label}
@@ -73,24 +74,27 @@ export default function AgendaViewFilter({
         ))}
       </div>
 
-      {/* Bloc choix de la période (visible uniquement quand "Période" est sélectionné) */}
-      {value === "période" && customPeriod && onCustomPeriodChange && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl bg-white/90 border border-gray-100 p-3">
-          <span className="text-[11px] font-medium text-gray-600">Du</span>
-          <input
-            type="date"
+      {value === 'période' && customPeriod && onCustomPeriodChange && (
+        <div className='flex flex-wrap items-center gap-3 rounded-xl bg-white/90 border border-gray-100 p-3'>
+          <span className='text-[11px] font-medium text-gray-600'>Du</span>
+          <DatePicker
             value={startStr}
             onChange={handleStartChange}
             max={endStr || undefined}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+            allowClear={false}
+            placeholder='Date de début'
+            className='w-40'
+            buttonClassName='rounded-lg text-xs'
           />
-          <span className="text-[11px] font-medium text-gray-600">au</span>
-          <input
-            type="date"
+          <span className='text-[11px] font-medium text-gray-600'>au</span>
+          <DatePicker
             value={endStr}
             onChange={handleEndChange}
             min={startStr || undefined}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+            allowClear={false}
+            placeholder='Date de fin'
+            className='w-40'
+            buttonClassName='rounded-lg text-xs'
           />
         </div>
       )}

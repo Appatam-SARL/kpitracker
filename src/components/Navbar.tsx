@@ -6,10 +6,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { sidebarItems } from '@/components/Sidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasGroupCompanyScopeFrontend } from '@/lib/roles';
-import { BookOpen, LogOut, Search, Settings, User, Users } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { BookOpen, LogOut, Settings, User, Users } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useMemo, type ComponentType } from 'react';
 
 function getInitials(name: string): string {
   return name
@@ -20,17 +22,50 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
+/** Titres hors sidebar (profil, etc.). */
+const EXTRA_MENU_TITLES: { href: string; label: string }[] = [
+  { href: '/profile', label: 'Profil' },
+];
+
+/** Libellé du menu correspondant à la route courante. */
+export function getMenuLabelForPath(pathname: string): string {
+  const entries = [...sidebarItems, ...EXTRA_MENU_TITLES].sort(
+    (a, b) => b.href.length - a.href.length,
+  );
+
+  for (const item of entries) {
+    const baseHref = item.href.split('?')[0];
+    if (baseHref === '/') {
+      if (pathname === '/') return item.label;
+      continue;
+    }
+    if (pathname === baseHref || pathname.startsWith(`${baseHref}/`)) {
+      return item.label;
+    }
+  }
+
+  return 'KpiTracker';
+}
+
 type NavbarProps = {
+  /** Si fourni, remplace le libellé du menu (ex. fiche détail). */
   title?: string;
+  /** Description affichée juste sous le titre. */
   subtitle?: string;
+  /** Icône à gauche du titre. */
+  titleIcon?: ComponentType<{ className?: string }>;
 };
 
-export default function Navbar({
-  title = "Vue d'ensemble KpiTracker",
-  subtitle,
-}: NavbarProps) {
+export default function Navbar({ title, subtitle, titleIcon: TitleIcon }: NavbarProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user } = useAuth();
+
+  const menuTitle = useMemo(
+    () => getMenuLabelForPath(pathname ?? '/'),
+    [pathname],
+  );
+  const displayTitle = title?.trim() || menuTitle;
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -39,26 +74,32 @@ export default function Navbar({
   };
 
   const showCommercialesLink = hasGroupCompanyScopeFrontend(user?.role);
-  const greeting = subtitle ?? (user ? `Bonjour, ${user.name}` : 'Bonjour');
+  const greeting = user ? `Bonjour, ${user.name}` : 'Bonjour';
+  const description = subtitle?.trim() || null;
 
   return (
     <header className='hidden sm:flex items-center justify-between pb-4 bg-transparent'>
-      <div className='flex min-w-0 flex-col gap-1'>
-        <span className='text-xs text-gray-400 truncate'>{greeting}</span>
-        <h1 className='text-lg md:text-2xl font-semibold text-primary truncate'>
-          {title}
-        </h1>
+      <div className='flex min-w-0 items-start gap-3'>
+        {TitleIcon ? (
+          <span className='mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary'>
+            <TitleIcon className='h-5 w-5' />
+          </span>
+        ) : null}
+        <div className='flex min-w-0 flex-col gap-0.5'>
+          <span className='text-xs text-gray-400 truncate'>{greeting}</span>
+          <h1 className='text-lg md:text-2xl font-semibold text-primary truncate'>
+            {displayTitle}
+          </h1>
+          {description ? (
+            <p className='text-xs text-gray-500 md:whitespace-normal'>
+              {description}
+            </p>
+          ) : null}
+        </div>
       </div>
 
-      <div className='flex items-center gap-3'>
-        <div className='hidden md:flex items-center gap-2 bg-white rounded-full px-3 py-1.5 shadow-neu text-xs text-gray-400 w-[min(100%,220px)] max-w-[220px] shrink'>
-          <Search className='w-4 h-4 shrink-0' />
-          <input
-            placeholder='Rechercher…'
-            className='bg-transparent outline-none flex-1 min-w-0 text-[11px]'
-          />
-        </div>
-        {user && (
+      {user && (
+        <div className='flex items-center gap-3'>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -104,8 +145,8 @@ export default function Navbar({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        )}
-      </div>
+        </div>
+      )}
     </header>
   );
 }

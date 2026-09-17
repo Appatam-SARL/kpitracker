@@ -237,7 +237,10 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <DashboardShell title="Tableau de bord" subtitle="Chargement…">
+      <DashboardShell
+        title='Tableau de bord'
+        subtitle='Indicateurs clés, agenda du jour, répartition pipeline et derniers prospects.'
+      >
         <SkeletonLoader />
       </DashboardShell>
     );
@@ -245,29 +248,19 @@ export default function DashboardPage() {
 
   return (
     <DashboardShell
-      title="Tableau de bord"
-      subtitle={
-        hasGroupScope
-          ? `Activité commerciale — ${scopeLabel}`
-          : "Vue synthétique de l'activité commerciale"
-      }
+      title='Tableau de bord'
+      subtitle='Indicateurs clés, agenda du jour, répartition pipeline et derniers prospects.'
     >
       <DashboardOnboardingCarousel />
 
-      <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-xs text-gray-500">
-            Indicateurs clés, agenda du jour, répartition pipeline et derniers
-            prospects.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <section className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end'>
+        <div className='flex flex-wrap items-center gap-2'>
           {hasGroupScope && (
-            <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm">
-              <Building2 className="h-4 w-4 shrink-0 text-primary" />
+            <div className='flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm'>
+              <Building2 className='h-4 w-4 shrink-0 text-primary' />
               <GroupCompanySelect
-                id="dashboard-company"
-                label=""
+                id='dashboard-company'
+                label=''
                 value={selectedCompanyId}
                 options={companyOptions}
                 includeHoldingOption
@@ -277,20 +270,20 @@ export default function DashboardPage() {
                     : undefined
                 }
                 onChange={setSelectedCompanyId}
-                className="min-w-40"
-                selectClassName="rounded-lg border-0 bg-transparent px-0 py-0 text-xs w-full sm:min-w-44 focus:outline-none focus:ring-0"
+                className='min-w-40'
+                selectClassName='rounded-lg border-0 bg-transparent px-0 py-0 text-xs w-full sm:min-w-44 focus:outline-none focus:ring-0'
               />
             </div>
           )}
           <button
-            type="button"
+            type='button'
             onClick={() => void handleManualRefresh()}
             disabled={refreshing}
-            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-[11px] font-medium text-gray-600 shadow-sm transition hover:text-primary disabled:opacity-60"
-            aria-label="Rafraîchir le tableau de bord"
+            className='inline-flex h-9 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-[11px] font-medium text-gray-600 shadow-sm transition hover:text-primary disabled:opacity-60'
+            aria-label='Rafraîchir le tableau de bord'
           >
             <RefreshCw
-              className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
+              className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`}
             />
             Actualiser
           </button>

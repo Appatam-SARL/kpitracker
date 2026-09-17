@@ -24,7 +24,7 @@ import {
   normalizeFrontendRole,
 } from '@/lib/roles';
 import { withDashboardLayout } from '@/components/layouts/withDashboardLayout';
-import { MoreHorizontal, Plus, Search } from 'lucide-react';
+import { MoreHorizontal, Plus, Search, Users } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -78,7 +78,6 @@ function UsersPageInner() {
     selectedCompanyId,
     setSelectedCompanyId,
     apiCompanyId,
-    scopeLabel,
   } = useGroupCompanyScope();
 
   const [query, setQuery] = useState('');
@@ -238,20 +237,10 @@ function UsersPageInner() {
     return null;
   }
 
-  const pageSubtitle = hasGroupScope
-    ? `Consultez les commerciales de chaque entreprise du groupe — ${scopeLabel}.`
-    : "Gérez les comptes, les rôles et les droits d'accès de votre équipe.";
-
   return (
     <>
-      <section className='flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-2'>
-        <div>
-          <h1 className='text-xl md:text-2xl font-semibold text-primary'>
-            Utilisateurs
-          </h1>
-          <p className='text-xs md:text-sm text-gray-500'>{pageSubtitle}</p>
-        </div>
-        {canManageUserAccounts(authUser.role) && (
+      {canManageUserAccounts(authUser.role) && (
+        <section className='mt-2 flex justify-end'>
           <button
             type='button'
             onClick={() => setCreateOpen(true)}
@@ -259,8 +248,8 @@ function UsersPageInner() {
           >
             <Plus className='w-3.5 h-3.5' /> Ajouter un utilisateur
           </button>
-        )}
-      </section>
+        </section>
+      )}
 
       {hasGroupScope && (
         <div className='mt-4'>
@@ -567,6 +556,11 @@ function UsersPageInner() {
   );
 }
 
-const UsersPage = withDashboardLayout(UsersPageInner);
+const UsersPage = withDashboardLayout(UsersPageInner, {
+  title: 'Utilisateurs',
+  subtitle:
+    "Gérez les comptes, les rôles et les droits d'accès de votre équipe.",
+  titleIcon: Users,
+});
 
 export default UsersPage;

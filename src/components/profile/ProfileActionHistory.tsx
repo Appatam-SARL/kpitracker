@@ -18,6 +18,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Filter, History, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -214,27 +215,31 @@ export function ProfileActionHistory({
               <div className='space-y-1'>
                 <div className='text-[11px] text-gray-500'>Période</div>
                 <div className='flex gap-2'>
-                  <input
-                    type='date'
+                  <DatePicker
                     value={filtersUi.from}
-                    onChange={(e) =>
+                    onChange={(value) =>
                       setFiltersUi((prev) => ({
                         ...prev,
-                        from: e.target.value,
+                        from: value,
                       }))
                     }
-                    className='flex-1 rounded-lg border border-gray-200 px-2 py-1.5 text-xs'
+                    max={filtersUi.to || undefined}
+                    placeholder='Du'
+                    className='flex-1'
+                    buttonClassName='rounded-lg text-xs'
                   />
-                  <input
-                    type='date'
+                  <DatePicker
                     value={filtersUi.to}
-                    onChange={(e) =>
+                    onChange={(value) =>
                       setFiltersUi((prev) => ({
                         ...prev,
-                        to: e.target.value,
+                        to: value,
                       }))
                     }
-                    className='flex-1 rounded-lg border border-gray-200 px-2 py-1.5 text-xs'
+                    min={filtersUi.from || undefined}
+                    placeholder='Au'
+                    className='flex-1'
+                    buttonClassName='rounded-lg text-xs'
                   />
                 </div>
               </div>

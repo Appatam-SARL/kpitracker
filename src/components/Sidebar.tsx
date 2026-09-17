@@ -12,12 +12,13 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  ContactRound,
+  Factory,
   LayoutGrid,
   Package,
   Settings,
   Trash2,
   User,
-  UserPlus,
   Users,
   FileText,
 } from 'lucide-react';
@@ -47,7 +48,8 @@ const SECTION_ORDER: SidebarSectionId[] = ['principal', 'pilotage', 'systeme'];
 export const sidebarItems: SidebarItemDef[] = [
   { icon: LayoutGrid, label: 'Dashboard', href: '/', section: 'principal' },
   { icon: CalendarDays, label: 'Agenda', href: '/agenda', section: 'principal' },
-  { icon: UserPlus, label: 'Gestion Prospects', href: '/leads', section: 'principal' },
+  { icon: ContactRound, label: 'Gestion Contacts', href: '/leads', section: 'principal' },
+  { icon: Factory, label: 'Gestion des prospects', href: '/entreprises', section: 'principal' },
   { icon: Building2, label: 'Gestion Clients', href: '/clients', section: 'principal' },
   {
     icon: BarChart3,

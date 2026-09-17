@@ -5,12 +5,6 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  DEFAULT_LEAD_SEARCH_FIELDS,
-  LEAD_SEARCH_FIELDS,
-  type LeadSearchFieldId,
-  buildSearchPlaceholder,
-} from '@/lib/lead-search';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
 import {
   useCallback,
@@ -18,22 +12,15 @@ import {
   useId,
   useRef,
   useState,
+  type ReactNode,
 } from 'react';
 
-const HISTORY_KEY = 'crm_leads_search_history';
 const HISTORY_MAX = 10;
 
-type LeadSearchBarProps = {
-  query: string;
-  onQueryChange: (value: string) => void;
-  searchFields: LeadSearchFieldId[];
-  onSearchFieldsChange: (fields: LeadSearchFieldId[]) => void;
-};
-
-function readHistory(): string[] {
+function readHistory(storageKey: string): string[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = window.localStorage.getItem(HISTORY_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -46,11 +33,11 @@ function readHistory(): string[] {
   }
 }
 
-function writeHistory(items: string[]) {
+function writeHistory(storageKey: string, items: string[]) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(
-      HISTORY_KEY,
+      storageKey,
       JSON.stringify(items.slice(0, HISTORY_MAX)),
     );
   } catch {
@@ -58,33 +45,65 @@ function writeHistory(items: string[]) {
   }
 }
 
-function pushHistory(term: string): string[] {
+function pushHistory(storageKey: string, term: string): string[] {
   const normalized = term.trim();
-  if (!normalized) return readHistory();
+  if (!normalized) return readHistory(storageKey);
   const next = [
     normalized,
-    ...readHistory().filter(
+    ...readHistory(storageKey).filter(
       (item) => item.toLowerCase() !== normalized.toLowerCase(),
     ),
   ].slice(0, HISTORY_MAX);
-  writeHistory(next);
+  writeHistory(storageKey, next);
   return next;
 }
 
-export default function LeadSearchBar({
+export type InstantSearchFieldOption = {
+  id: string;
+  label: string;
+};
+
+type InstantSearchBarProps = {
+  query: string;
+  onQueryChange: (value: string) => void;
+  placeholder?: string;
+  storageKey: string;
+  disabled?: boolean;
+  trailing?: ReactNode;
+  className?: string;
+  /** Champs de recherche inclus/exclus (comme sur Contacts) */
+  fieldOptions?: readonly InstantSearchFieldOption[];
+  searchFields?: string[];
+  onSearchFieldsChange?: (fields: string[]) => void;
+  defaultSearchFields?: readonly string[];
+};
+
+export default function InstantSearchBar({
   query,
   onQueryChange,
+  placeholder = 'Rechercher…',
+  storageKey,
+  disabled = false,
+  trailing,
+  className = '',
+  fieldOptions,
   searchFields,
   onSearchFieldsChange,
-}: LeadSearchBarProps) {
+  defaultSearchFields,
+}: InstantSearchBarProps) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
 
+  const hasFieldCriteria =
+    Boolean(fieldOptions?.length) &&
+    Array.isArray(searchFields) &&
+    typeof onSearchFieldsChange === 'function';
+
   useEffect(() => {
-    setHistory(readHistory());
-  }, []);
+    setHistory(readHistory(storageKey));
+  }, [storageKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -97,28 +116,38 @@ export default function LeadSearchBar({
     return () => document.removeEventListener('mousedown', onPointerDown);
   }, [open]);
 
-  const rememberQuery = useCallback((value: string) => {
-    const next = pushHistory(value);
-    setHistory(next);
-  }, []);
+  const rememberQuery = useCallback(
+    (value: string) => {
+      const next = pushHistory(storageKey, value);
+      setHistory(next);
+    },
+    [storageKey],
+  );
 
-  const toggleField = (fieldId: LeadSearchFieldId) => {
+  const toggleField = (fieldId: string) => {
+    if (!hasFieldCriteria || !searchFields || !onSearchFieldsChange) return;
     if (searchFields.includes(fieldId)) {
       const next = searchFields.filter((id) => id !== fieldId);
       onSearchFieldsChange(
-        next.length > 0 ? next : [...DEFAULT_LEAD_SEARCH_FIELDS],
+        next.length > 0
+          ? next
+          : [...(defaultSearchFields ?? fieldOptions!.map((f) => f.id))],
       );
       return;
     }
     onSearchFieldsChange([...searchFields, fieldId]);
   };
 
-  const selectAll = () => {
-    onSearchFieldsChange(LEAD_SEARCH_FIELDS.map((f) => f.id));
+  const selectAllFields = () => {
+    if (!hasFieldCriteria || !onSearchFieldsChange || !fieldOptions) return;
+    onSearchFieldsChange(fieldOptions.map((f) => f.id));
   };
 
-  const resetDefault = () => {
-    onSearchFieldsChange([...DEFAULT_LEAD_SEARCH_FIELDS]);
+  const resetDefaultFields = () => {
+    if (!hasFieldCriteria || !onSearchFieldsChange) return;
+    onSearchFieldsChange([
+      ...(defaultSearchFields ?? fieldOptions!.map((f) => f.id)),
+    ]);
   };
 
   const suggestions = (() => {
@@ -127,7 +156,9 @@ export default function LeadSearchBar({
     return history.filter((item) => item.toLowerCase().includes(q));
   })();
 
-  const showSuggestions = open && suggestions.length > 0;
+  const inputDisabled =
+    disabled || (hasFieldCriteria && (searchFields?.length ?? 0) === 0);
+  const showSuggestions = open && suggestions.length > 0 && !inputDisabled;
 
   const selectSuggestion = (term: string) => {
     onQueryChange(term);
@@ -139,15 +170,15 @@ export default function LeadSearchBar({
     const next = history.filter(
       (item) => item.toLowerCase() !== term.toLowerCase(),
     );
-    writeHistory(next);
+    writeHistory(storageKey, next);
     setHistory(next);
   };
 
-  const activeCount = searchFields.length;
-  const totalCount = LEAD_SEARCH_FIELDS.length;
+  const activeCount = searchFields?.length ?? 0;
+  const totalCount = fieldOptions?.length ?? 0;
 
   return (
-    <div ref={rootRef} className='relative w-full min-w-0'>
+    <div ref={rootRef} className={`relative min-w-0 ${className}`}>
       <div className='flex w-full min-w-0 items-center gap-2 rounded-full border border-gray-100 bg-gray-50 px-3 py-1.5 text-xs focus-within:border-primary/20 focus-within:bg-white focus-within:shadow-neu-soft'>
         <Search className='h-4 w-4 shrink-0 text-gray-400' />
         <input
@@ -157,7 +188,7 @@ export default function LeadSearchBar({
             setOpen(true);
           }}
           onFocus={() => {
-            setHistory(readHistory());
+            setHistory(readHistory(storageKey));
             setOpen(true);
           }}
           onKeyDown={(e) => {
@@ -172,15 +203,14 @@ export default function LeadSearchBar({
             }
           }}
           onBlur={() => {
-            // Laisse le clic sur une suggestion se produire avant fermeture
             window.setTimeout(() => {
               if (!rootRef.current?.contains(document.activeElement)) {
                 if (query.trim()) rememberQuery(query);
               }
             }, 120);
           }}
-          placeholder={buildSearchPlaceholder(searchFields)}
-          disabled={searchFields.length === 0}
+          placeholder={placeholder}
+          disabled={inputDisabled}
           role='combobox'
           aria-expanded={showSuggestions}
           aria-controls={listId}
@@ -200,70 +230,73 @@ export default function LeadSearchBar({
             <X className='h-3.5 w-3.5' />
           </button>
         ) : null}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type='button'
-              className='relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-white hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
-              aria-label='Critères de recherche'
-              title='Critères de recherche'
-            >
-              <SlidersHorizontal className='h-3.5 w-3.5' />
-              {activeCount < totalCount && (
-                <span className='absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[8px] font-semibold text-white'>
-                  {activeCount}
-                </span>
-              )}
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align='end'
-            className='w-60 p-2'
-            onCloseAutoFocus={(e) => e.preventDefault()}
-          >
-            <p className='px-2 pb-1 text-[10px] font-medium text-gray-500'>
-              Champs concernés par la recherche
-            </p>
-            <div
-              className='max-h-56 overflow-y-auto'
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              {LEAD_SEARCH_FIELDS.map((field) => {
-                const checked = searchFields.includes(field.id);
-                return (
-                  <label
-                    key={field.id}
-                    className='flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50'
-                  >
-                    <input
-                      type='checkbox'
-                      checked={checked}
-                      onChange={() => toggleField(field.id)}
-                      className='h-3.5 w-3.5 shrink-0 rounded border-gray-300 text-primary focus:ring-primary/30'
-                    />
-                    <span className='flex-1'>{field.label}</span>
-                  </label>
-                );
-              })}
-            </div>
-            <div className='mt-1 flex gap-1 border-t border-gray-100 pt-2'>
+        {hasFieldCriteria ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <button
                 type='button'
-                onClick={selectAll}
-                className='flex-1 rounded-lg px-2 py-1 text-[10px] text-gray-600 hover:bg-gray-50'
+                className='relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-white hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
+                aria-label='Critères de recherche'
+                title='Critères de recherche'
               >
-                Tout sélectionner
+                <SlidersHorizontal className='h-3.5 w-3.5' />
+                {activeCount < totalCount && (
+                  <span className='absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[8px] font-semibold text-white'>
+                    {activeCount}
+                  </span>
+                )}
               </button>
-              <button
-                type='button'
-                onClick={resetDefault}
-                className='flex-1 rounded-lg px-2 py-1 text-[10px] text-gray-600 hover:bg-gray-50'
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align='end'
+              className='w-60 p-2'
+              onCloseAutoFocus={(e) => e.preventDefault()}
+            >
+              <p className='px-2 pb-1 text-[10px] font-medium text-gray-500'>
+                Champs concernés par la recherche
+              </p>
+              <div
+                className='max-h-56 overflow-y-auto'
+                onPointerDown={(e) => e.stopPropagation()}
               >
-                Par défaut
-              </button>
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+                {fieldOptions!.map((field) => {
+                  const checked = searchFields!.includes(field.id);
+                  return (
+                    <label
+                      key={field.id}
+                      className='flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50'
+                    >
+                      <input
+                        type='checkbox'
+                        checked={checked}
+                        onChange={() => toggleField(field.id)}
+                        className='h-3.5 w-3.5 shrink-0 rounded border-gray-300 text-primary focus:ring-primary/30'
+                      />
+                      <span className='flex-1'>{field.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div className='mt-1 flex gap-1 border-t border-gray-100 pt-2'>
+                <button
+                  type='button'
+                  onClick={selectAllFields}
+                  className='flex-1 rounded-lg px-2 py-1 text-[10px] text-gray-600 hover:bg-gray-50'
+                >
+                  Tout sélectionner
+                </button>
+                <button
+                  type='button'
+                  onClick={resetDefaultFields}
+                  className='flex-1 rounded-lg px-2 py-1 text-[10px] text-gray-600 hover:bg-gray-50'
+                >
+                  Par défaut
+                </button>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+        {trailing}
       </div>
 
       {showSuggestions ? (

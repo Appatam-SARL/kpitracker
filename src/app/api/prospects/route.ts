@@ -101,6 +101,7 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { updatedAt: 'desc' },
       include: {
+        createdBy: { select: { id: true, name: true } },
         activityDomains: { select: { domain: true }, orderBy: { domain: 'asc' } },
         _count: {
           select: {
@@ -116,7 +117,12 @@ export async function GET(req: NextRequest) {
             jobTitle: true,
             email: true,
             phone: true,
+            civility: true,
+            decisionRole: true,
+            negotiationStage: true,
             createdById: true,
+            createdAt: true,
+            updatedAt: true,
             createdBy: { select: { id: true, name: true, companyId: true } },
           },
           orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
@@ -146,6 +152,9 @@ export async function GET(req: NextRequest) {
           status: p.status,
           createdAt: p.createdAt,
           updatedAt: p.updatedAt,
+          createdBy: p.createdBy
+            ? { id: p.createdBy.id, name: p.createdBy.name }
+            : null,
           activityDomains: p.activityDomains.map((d) => d.domain),
           contactsCount: p._count.contacts,
           contactsPreview: visibleContacts.map((c) => ({
@@ -155,8 +164,14 @@ export async function GET(req: NextRequest) {
             jobTitle: c.jobTitle,
             email: c.email,
             phone: c.phone,
+            civility: c.civility,
+            decisionRole: c.decisionRole,
+            negotiationStage: c.negotiationStage,
             canViewFiche: canViewContactFiche(user, c),
             ownerName: c.createdBy?.name ?? null,
+            createdById: c.createdById,
+            createdAt: c.createdAt,
+            updatedAt: c.updatedAt,
           })),
         };
       }),
@@ -220,6 +235,7 @@ export async function POST(req: Request) {
         source: body.source || null,
         notes: body.notes || null,
         status: body.status ?? body.contact.negotiationStage ?? 'EN_PROSPECTION',
+        createdById: user.id,
         activityDomains:
           domains.length > 0
             ? { create: domains.map((domain) => ({ domain })) }

@@ -98,6 +98,8 @@ model User {
   passwordResetTokens PasswordResetToken[]
   /// Contacts créés par cet utilisateur sur des prospects entreprise
   prospectContactsCreated ProspectContact[] @relation("ProspectContactCreatedBy")
+  /// Entreprises prospectées créées par cet utilisateur
+  prospectsCreated Prospect[] @relation("ProspectCreatedBy")
   /// Intérêts produits proposés par cet utilisateur
   prospectProductInterests ProspectProductInterest[]
   /// Intérêts services proposés par cet utilisateur
@@ -158,6 +160,9 @@ model Prospect {
   notes          String?
   /// Stade agrégé (pipeline entreprise) — source de vérité fine = contact
   status         NegotiationStage @default(EN_PROSPECTION)
+  /// Utilisateur ayant ajouté l'entreprise dans le système
+  createdBy      User?            @relation("ProspectCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdById    String?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
@@ -174,6 +179,7 @@ model Prospect {
   @@unique([nameNormalized])
   @@index([deletedAt])
   @@index([status])
+  @@index([createdById])
 }
 
 /// Contact (personne) rattaché à une entreprise prospectée, créé par une commerciale

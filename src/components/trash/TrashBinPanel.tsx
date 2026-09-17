@@ -234,17 +234,6 @@ export default function TrashBinPanel() {
 
   return (
     <div className='flex flex-col gap-4'>
-      <div>
-        <h1 className='text-lg font-semibold text-primary flex items-center gap-2'>
-          <Trash2 className='w-5 h-5' />
-          Corbeille
-        </h1>
-        <p className='text-xs text-gray-500 mt-1'>
-          Éléments supprimés récupérables. Restaurez-les ou supprimez-les
-          définitivement.
-        </p>
-      </div>
-
       <NeumoCard className='bg-white p-4 shadow-neu-soft flex flex-col gap-4'>
         <div className='flex flex-col lg:flex-row lg:flex-wrap gap-3 lg:items-end'>
           {hasGroupScope && (

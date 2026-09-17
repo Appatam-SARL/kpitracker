@@ -4,6 +4,14 @@ import RapportOnboardingCarousel from '@/components/rapport/RapportOnboardingCar
 import GroupCompanySelect from '@/components/GroupCompanySelect';
 import NeumoCard from '@/components/NeumoCard';
 import DashboardShell from '@/components/layouts/DashboardShell';
+import { DatePicker } from '@/components/ui/date-picker';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -308,7 +316,7 @@ export default function RapportPage() {
 
   if (!canAccess) {
     return (
-      <DashboardShell title='Rapport' subtitle='Accès restreint'>
+      <DashboardShell title='Rapport' subtitle='Accès restreint' titleIcon={FileText}>
         <NeumoCard className='border border-gray-100 bg-white p-5 shadow-neu-soft'>
           <p className='text-sm text-gray-600'>
             Cette page est réservée aux managers, administrateurs et rôles
@@ -329,6 +337,7 @@ export default function RapportPage() {
     <DashboardShell
       title='Rapport'
       subtitle={`Synthèses de ventes par commerciale — ${scopeLabel}`}
+      titleIcon={FileText}
     >
       <section className='flex flex-col gap-4'>
         <RapportOnboardingCarousel
@@ -372,67 +381,87 @@ export default function RapportPage() {
               <label className='text-[11px] text-gray-500' htmlFor='rapport-from'>
                 Du
               </label>
-              <input
+              <DatePicker
                 id='rapport-from'
-                type='date'
                 value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                className='rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs'
+                onChange={setFrom}
+                max={to || undefined}
+                placeholder='Date de début'
+                buttonClassName='rounded-lg text-xs'
               />
             </div>
             <div className='flex flex-col gap-1'>
               <label className='text-[11px] text-gray-500' htmlFor='rapport-to'>
                 Au
               </label>
-              <input
+              <DatePicker
                 id='rapport-to'
-                type='date'
                 value={to}
-                onChange={(e) => setTo(e.target.value)}
-                className='rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs'
+                onChange={setTo}
+                min={from || undefined}
+                placeholder='Date de fin'
+                buttonClassName='rounded-lg text-xs'
               />
             </div>
             <div className='flex flex-col gap-1'>
               <label
                 className='text-[11px] text-gray-500'
                 htmlFor='rapport-agent'
+                id='rapport-agent-label'
               >
                 Commerciale
               </label>
-              <select
-                id='rapport-agent'
-                value={agentId}
-                onChange={(e) => setAgentId(e.target.value)}
-                className='rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs'
+              <Select
+                value={agentId || '__all__'}
+                onValueChange={(value) =>
+                  setAgentId(value === '__all__' ? '' : value)
+                }
               >
-                <option value=''>Toutes les commerciales</option>
-                {commercials.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  id='rapport-agent'
+                  aria-labelledby='rapport-agent-label'
+                >
+                  <SelectValue placeholder='Toutes les commerciales' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='__all__'>Toutes les commerciales</SelectItem>
+                  {commercials.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className='flex flex-col gap-1'>
               <label
                 className='text-[11px] text-gray-500'
                 htmlFor='rapport-source'
+                id='rapport-source-label'
               >
                 Source (optionnel)
               </label>
-              <select
-                id='rapport-source'
-                value={source}
-                onChange={(e) => setSource(e.target.value)}
-                className='rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs'
+              <Select
+                value={source || '__all__'}
+                onValueChange={(value) =>
+                  setSource(value === '__all__' ? '' : value)
+                }
               >
-                <option value=''>Toutes les sources</option>
-                {DEFAULT_LEAD_SOURCES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  id='rapport-source'
+                  aria-labelledby='rapport-source-label'
+                >
+                  <SelectValue placeholder='Toutes les sources' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='__all__'>Toutes les sources</SelectItem>
+                  {DEFAULT_LEAD_SOURCES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className='flex flex-col gap-1 sm:col-span-2 lg:col-span-1'>
               <label

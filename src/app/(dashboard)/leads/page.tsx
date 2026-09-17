@@ -14,7 +14,6 @@ import NeumoCard from '@/components/NeumoCard';
 import PipelineColumn from '@/components/PipelineColumn';
 import SkeletonLoader from '@/components/SkeletonLoader';
 import { withDashboardLayout } from '@/components/layouts/withDashboardLayout';
-import { formatLeadTypeLabel } from '@/config/lead-options';
 import {
   NEGOTIATION_STAGE_FIELD_LABEL,
   NEGOTIATION_STAGE_LABELS,
@@ -22,12 +21,19 @@ import {
   NEGOTIATION_STAGE_STYLES,
   mapLegacyLeadStatusToNegotiationStage,
 } from '@/config/negotiation-stage';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Popover,
+  PopoverClose,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   Table,
   TableBody,
@@ -47,18 +53,25 @@ import {
 } from '@/lib/lead-search';
 import { isAdminOrManagerLike } from '@/lib/roles';
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Columns3,
+  ContactRound,
   Download,
   Eye,
+  Filter,
   LayoutGrid,
   List,
   MoreHorizontal,
   Pencil,
   Plus,
+  RefreshCw,
+  RotateCcw,
+  Save,
   Trash2,
   Upload,
+  X,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -81,6 +94,8 @@ type SavedView = {
 
 interface LeadRow {
   id: string;
+  prospectId: string;
+  contactId: string;
   firstName: string;
   lastName: string;
   email?: string | null;
@@ -96,10 +111,13 @@ interface LeadRow {
   activitySector?: string | null;
   leadType?: string | null;
   civility?: string | null;
+  decisionRole?: string | null;
   crmCompanyName?: string;
-  contactsCount?: number;
-  contactsPreview?: LeadContactPreview[];
-  contacts?: LeadContactPreview[];
+  canViewFiche?: boolean;
+  ownerName?: string | null;
+  createdById?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 function contactInitials(firstName?: string, lastName?: string) {
@@ -131,12 +149,79 @@ const DEFAULT_FILTERS: Filters = {
   staleDays: undefined,
 };
 
+const SYSTEM_VIEW_OPTIONS = [
+  { id: 'system-all', label: 'Tous les leads' },
+  { id: 'system-follow-up', label: 'Leads à relancer' },
+  { id: 'system-new-week', label: 'Nouveaux leads (7 derniers jours)' },
+] as const;
+
+function toLocalISODate(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatFilterDate(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function FilterChipButton({
+  label,
+  value,
+  active,
+  onClear,
+}: {
+  label: string;
+  value?: string;
+  active?: boolean;
+  onClear?: () => void;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[10px] transition-colors ${
+        active
+          ? 'border-primary/30 bg-primary/5 text-primary'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+      }`}
+    >
+      <span className='font-medium'>{label}</span>
+      {value ? (
+        <span className='max-w-36 truncate text-primary/90'>{value}</span>
+      ) : (
+        <ChevronDown className='h-3 w-3 text-gray-400' />
+      )}
+      {active && onClear ? (
+        <button
+          type='button'
+          aria-label={`Effacer le filtre ${label}`}
+          className='ml-0.5 rounded-full p-0.5 text-gray-400 hover:bg-gray-100 hover:text-rose-600'
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onClear();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <X className='h-3 w-3' />
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
 function buildSystemViewFilters(id: string): Filters {
   const today = new Date();
-  const toISO = (d: Date) => d.toISOString().slice(0, 10);
 
   if (id === 'system-follow-up') {
-    // Leads à relancer : actifs, sans activité récente (7 jours)
+    // Contacts en prospection sans activité récente (7 jours)
     return {
       ...DEFAULT_FILTERS,
       status: ['EN_PROSPECTION'],
@@ -149,8 +234,8 @@ function buildSystemViewFilters(id: string): Filters {
     from.setDate(from.getDate() - 7);
     return {
       ...DEFAULT_FILTERS,
-      createdFrom: toISO(from),
-      createdTo: toISO(today),
+      createdFrom: toLocalISODate(from),
+      createdTo: toLocalISODate(today),
     };
   }
 
@@ -252,15 +337,14 @@ function LeadsPageInner() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (filters.status.length === 1) {
-        params.set('status', filters.status[0]);
+      if (hasGroupScope && apiCompanyId) {
+        params.set('companyId', apiCompanyId);
       }
-
       const qs = params.toString();
       const res = await fetch(`/api/prospects${qs ? `?${qs}` : ''}`);
       if (!res.ok) return;
       const data = await res.json();
-      const mapped: LeadRow[] = (Array.isArray(data) ? data : []).map(
+      const mapped: LeadRow[] = (Array.isArray(data) ? data : []).flatMap(
         (p: {
           id: string;
           name: string;
@@ -271,37 +355,47 @@ function LeadsPageInner() {
           activitySector?: string | null;
           leadType?: string | null;
           notes?: string | null;
-          status?: string;
-          contactsCount?: number;
-          contactsPreview?: LeadContactPreview[];
+          createdAt?: string | null;
+          updatedAt?: string | null;
+          contactsPreview?: Array<
+            LeadContactPreview & {
+              negotiationStage?: string | null;
+              civility?: string | null;
+              decisionRole?: string | null;
+              createdAt?: string | null;
+              updatedAt?: string | null;
+            }
+          >;
         }) => {
           const preview = p.contactsPreview ?? [];
-          const first = preview[0];
-          return {
-            id: p.id,
-            firstName: first?.firstName ?? '',
-            lastName: first?.lastName ?? '',
-            email: first?.email,
-            phone: first?.phone,
+          return preview.map((c) => ({
+            id: c.id,
+            prospectId: p.id,
+            contactId: c.id,
+            firstName: c.firstName ?? '',
+            lastName: c.lastName ?? '',
+            email: c.email,
+            phone: c.phone,
+            civility: c.civility ?? null,
+            decisionRole: c.decisionRole ?? null,
+            jobTitle: c.jobTitle ?? null,
             source: p.source,
             companyName: p.name,
-            jobTitle:
-              typeof p.contactsCount === 'number'
-                ? `${p.contactsCount} contact${p.contactsCount > 1 ? 's' : ''}`
-                : null,
             location: p.location,
             geographicSituation: p.geographicSituation,
             activityDomains: p.activityDomains ?? [],
             activitySector: p.activitySector ?? null,
             leadType: p.leadType ?? null,
-            notes: p.notes
-              ? `${formatLeadTypeLabel(p.leadType)} · ${p.notes}`
-              : formatLeadTypeLabel(p.leadType),
-            status: mapLegacyLeadStatusToNegotiationStage(p.status),
-            contactsCount: p.contactsCount ?? preview.length,
-            contactsPreview: preview,
-            contacts: preview,
-          };
+            notes: p.notes ?? undefined,
+            status: mapLegacyLeadStatusToNegotiationStage(
+              c.negotiationStage ?? 'EN_PROSPECTION',
+            ),
+            canViewFiche: c.canViewFiche !== false,
+            ownerName: c.ownerName ?? null,
+            createdById: c.createdById ?? null,
+            createdAt: c.createdAt ?? p.createdAt ?? null,
+            updatedAt: c.updatedAt ?? p.updatedAt ?? null,
+          }));
         },
       );
       setLeads(mapped);
@@ -310,32 +404,77 @@ function LeadsPageInner() {
     } finally {
       setLoading(false);
     }
-  }, [filters.status]);
+  }, [hasGroupScope, apiCompanyId]);
 
   useEffect(() => {
     void fetchLeads();
   }, [fetchLeads]);
 
   const filtered = useMemo(() => {
-    const matched = leads.filter((lead) =>
+    let matched = leads.filter((lead) =>
       leadMatchesSearchQuery(lead, query, searchFields),
     );
-    return matched.sort((a, b) => {
-      const companyA = (a.companyName ?? '').trim();
-      const companyB = (b.companyName ?? '').trim();
-      if (!companyA && companyB) return 1;
-      if (companyA && !companyB) return -1;
-      const byCompany = companyA.localeCompare(companyB, 'fr', {
-        sensitivity: 'base',
+
+    if (filters.status.length > 0) {
+      matched = matched.filter((lead) => filters.status.includes(lead.status));
+    }
+
+    if (filters.source.trim()) {
+      const sourceQuery = filters.source.trim().toLowerCase();
+      matched = matched.filter((lead) =>
+        (lead.source ?? '').toLowerCase().includes(sourceQuery),
+      );
+    }
+
+    if (filters.assignedTo) {
+      matched = matched.filter(
+        (lead) => lead.createdById === filters.assignedTo,
+      );
+    }
+
+    if (filters.createdFrom) {
+      const from = new Date(`${filters.createdFrom}T00:00:00`);
+      matched = matched.filter((lead) => {
+        if (!lead.createdAt) return false;
+        const created = new Date(lead.createdAt);
+        return !Number.isNaN(created.getTime()) && created >= from;
       });
-      if (byCompany !== 0) return byCompany;
-      return `${a.lastName} ${a.firstName}`.localeCompare(
+    }
+
+    if (filters.createdTo) {
+      const to = new Date(`${filters.createdTo}T23:59:59.999`);
+      matched = matched.filter((lead) => {
+        if (!lead.createdAt) return false;
+        const created = new Date(lead.createdAt);
+        return !Number.isNaN(created.getTime()) && created <= to;
+      });
+    }
+
+    if (
+      typeof filters.staleDays === 'number' &&
+      !Number.isNaN(filters.staleDays) &&
+      filters.staleDays >= 0
+    ) {
+      const cutoff = Date.now() - filters.staleDays * 24 * 60 * 60 * 1000;
+      matched = matched.filter((lead) => {
+        if (!lead.updatedAt) return false;
+        const updated = new Date(lead.updatedAt).getTime();
+        return !Number.isNaN(updated) && updated < cutoff;
+      });
+    }
+
+    return matched.sort((a, b) => {
+      const byName = `${a.lastName} ${a.firstName}`.localeCompare(
         `${b.lastName} ${b.firstName}`,
         'fr',
         { sensitivity: 'base' },
       );
+      if (byName !== 0) return byName;
+      return (a.companyName ?? '').localeCompare(b.companyName ?? '', 'fr', {
+        sensitivity: 'base',
+      });
     });
-  }, [leads, query, searchFields]);
+  }, [leads, query, searchFields, filters]);
 
   // Pagination : calcul des leads à afficher pour la page courante
   const paginatedLeads = useMemo(() => {
@@ -346,10 +485,10 @@ function LeadsPageInner() {
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / leadsPerPage));
 
-  // Réinitialiser à la page 1 si la recherche ou la taille de page change
+  // Réinitialiser à la page 1 si la recherche, les filtres ou la taille de page change
   useEffect(() => {
     setCurrentPage(1);
-  }, [query, searchFields, leadsPerPage]);
+  }, [query, searchFields, leadsPerPage, filters]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -376,15 +515,21 @@ function LeadsPageInner() {
     newStatus: string,
     fromStatus?: string,
   ) => {
+    const row = leads.find((l) => l.id === leadId);
+    if (!row) return;
+
     setLeads((prev) =>
       prev.map((l) => (l.id === leadId ? { ...l, status: newStatus } : l)),
     );
     try {
-      const res = await fetch(`/api/prospects/${leadId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      const res = await fetch(
+        `/api/prospects/${row.prospectId}/contacts/${row.contactId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ negotiationStage: newStatus }),
+        },
+      );
       if (!res.ok) throw new Error('Erreur');
     } catch {
       setLeads((prev) =>
@@ -395,10 +540,50 @@ function LeadsPageInner() {
     }
   };
 
-  // Ouvrir le prospect (fiche entreprise)
-  const openLead = (lead: Lead) => {
+  const contactHref = (lead: LeadRow) =>
+    `/leads/${lead.prospectId}/contacts/${lead.contactId}`;
+
+  // Ouvrir la fiche contact
+  const openLead = (lead: LeadRow | Lead) => {
+    const prospectId =
+      'prospectId' in lead && lead.prospectId
+        ? lead.prospectId
+        : (lead as LeadRow).prospectId;
+    const contactId =
+      'contactId' in lead && lead.contactId
+        ? lead.contactId
+        : (lead as LeadRow).contactId;
+    if (prospectId && contactId) {
+      router.push(`/leads/${prospectId}/contacts/${contactId}`);
+      return;
+    }
     router.push(`/leads/${lead.id}`);
   };
+
+  const toLeadCard = (lead: LeadRow): Lead => ({
+    id: lead.id,
+    prospectId: lead.prospectId,
+    contactId: lead.contactId,
+    firstName: lead.firstName,
+    lastName: lead.lastName,
+    email: lead.email,
+    phone: lead.phone,
+    status: lead.status,
+    source: lead.source,
+    notes: lead.notes,
+    companyName: lead.companyName,
+    jobTitle: lead.jobTitle,
+    location: lead.location,
+    geographicSituation: lead.geographicSituation,
+    activityDomains: lead.activityDomains,
+    activitySector: lead.activitySector,
+    leadType: lead.leadType,
+    civility: lead.civility,
+    decisionRole: lead.decisionRole,
+    crmCompanyName: lead.crmCompanyName,
+    canViewFiche: lead.canViewFiche,
+    ownerName: lead.ownerName,
+  });
 
   // Export des leads
   const handleExport = async () => {
@@ -435,15 +620,20 @@ function LeadsPageInner() {
 
   // Sélectionner une vue
   const handleSelectView = (id: string) => {
+    if (!id || id === 'custom') return;
     setSelectedViewId(id);
     if (id.startsWith('system-')) {
       setFilters(buildSystemViewFilters(id));
-    } else {
-      const view = savedViews.find((v) => v.id === id);
-      if (view) {
-        setFilters(view.filters);
-      }
+      return;
     }
+    const view = savedViews.find((v) => v.id === id);
+    if (view) {
+      setFilters({ ...DEFAULT_FILTERS, ...view.filters });
+    }
+  };
+
+  const markCustomView = () => {
+    setSelectedViewId('custom');
   };
 
   // Enregistrer la vue courante
@@ -454,7 +644,7 @@ function LeadsPageInner() {
     const newView: SavedView = {
       id: `custom-${Date.now()}`,
       name,
-      filters,
+      filters: { ...filters },
     };
     const updated = [...savedViews, newView];
     setSavedViews(updated);
@@ -468,7 +658,7 @@ function LeadsPageInner() {
 
   // Toggle status filter
   const toggleStatusFilter = (status: string) => {
-    setSelectedViewId('');
+    markCustomView();
     setFilters((prev) => {
       const exists = prev.status.includes(status);
       return {
@@ -479,6 +669,57 @@ function LeadsPageInner() {
       };
     });
   };
+
+  const hasActiveFilters = useMemo(
+    () =>
+      filters.status.length > 0 ||
+      filters.source.trim() !== '' ||
+      filters.assignedTo !== '' ||
+      filters.createdFrom !== '' ||
+      filters.createdTo !== '' ||
+      typeof filters.staleDays === 'number',
+    [filters],
+  );
+
+  const advancedFilterCount = useMemo(() => {
+    let n = 0;
+    if (filters.source.trim()) n += 1;
+    if (filters.assignedTo) n += 1;
+    if (filters.createdFrom || filters.createdTo) n += 1;
+    if (typeof filters.staleDays === 'number') n += 1;
+    return n;
+  }, [filters]);
+
+  const availableSources = useMemo(() => {
+    const set = new Set<string>();
+    leads.forEach((lead) => {
+      const source = lead.source?.trim();
+      if (source) set.add(source);
+    });
+    return [...set].sort((a, b) => a.localeCompare(b, 'fr'));
+  }, [leads]);
+
+  const assignedToLabel =
+    userOptions.find((u) => u.id === filters.assignedTo)?.name ?? '';
+
+  const resetFilters = () => {
+    setFilters({ ...DEFAULT_FILTERS });
+    setSelectedViewId('system-all');
+  };
+
+  const viewOptions = useMemo(() => {
+    const options: { id: string; label: string }[] = [
+      ...SYSTEM_VIEW_OPTIONS.map((v) => ({ id: v.id, label: v.label })),
+      ...savedViews.map((view) => ({ id: view.id, label: view.name })),
+    ];
+    if (selectedViewId === 'custom') {
+      options.push({ id: 'custom', label: 'Vue personnalisée' });
+    }
+    return options;
+  }, [savedViews, selectedViewId]);
+
+  const selectedViewLabel =
+    viewOptions.find((v) => v.id === selectedViewId)?.label ?? 'Choisir une vue';
 
   return (
     <>
@@ -493,16 +734,7 @@ function LeadsPageInner() {
           onShowPipeline={() => setViewMode('kanban')}
         />
 
-        <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
-          <div className='min-w-0'>
-            <h1 className='text-xl font-semibold text-primary md:text-2xl'>
-              Leads
-            </h1>
-            <p className='text-xs text-gray-500 md:text-sm'>
-              Suivez vos prospects à travers le pipeline commercial.
-            </p>
-          </div>
-
+        <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-end'>
           <div
             className='flex shrink-0 self-start rounded-full bg-white p-0.5 shadow-neu'
             role='group'
@@ -581,6 +813,19 @@ function LeadsPageInner() {
 
           <button
             type='button'
+            onClick={() => void fetchLeads()}
+            disabled={loading}
+            title='Actualiser'
+            className='inline-flex h-10 items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-3.5 text-xs font-medium text-gray-700 shadow-neu transition hover:bg-gray-50 disabled:opacity-60 sm:min-w-38'
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 shrink-0 ${loading ? 'animate-spin' : ''}`}
+            />
+            <span className='truncate'>Actualiser</span>
+          </button>
+
+          <button
+            type='button'
             onClick={handleExport}
             disabled={exporting}
             title='Exporter les leads'
@@ -598,202 +843,356 @@ function LeadsPageInner() {
         id='leads-pipeline'
         className='mt-4 scroll-mt-4 p-4 bg-white flex flex-col gap-4'
       >
-        <div className='flex flex-col gap-4'>
-          <LeadSearchBar
-            query={query}
-            onQueryChange={setQuery}
-            searchFields={searchFields}
-            onSearchFieldsChange={setSearchFields}
-          />
-
-          <div
-            className={`grid grid-cols-1 gap-3 md:items-end md:gap-3 ${
-              hasGroupScope
-                ? 'md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]'
-                : 'md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_auto]'
-            }`}
-          >
-            <label className='flex min-w-0 flex-col gap-1'>
-              <span className='text-[11px] text-gray-500'>Vues</span>
-              <select
-                value={selectedViewId}
-                onChange={(e) => handleSelectView(e.target.value)}
-                className='h-9 w-full min-w-0 rounded-full border border-gray-200 bg-white px-3 text-[11px] text-gray-700'
-              >
-                <option value='system-all'>Tous les leads</option>
-                <option value='system-follow-up'>Leads à relancer</option>
-                <option value='system-new-week'>
-                  Nouveaux leads (7 derniers jours)
-                </option>
-                {savedViews.map((view) => (
-                  <option key={view.id} value={view.id}>
-                    {view.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {hasGroupScope && (
-              <GroupCompanySelect
-                id='leads-company'
-                label='Entreprise'
-                value={selectedCompanyId}
-                options={companyOptions}
-                fallbackOption={
-                  authUser?.company
-                    ? { id: authUser.company.id, name: authUser.company.name }
-                    : undefined
-                }
-                includeHoldingOption
-                onChange={(companyId) => {
-                  setSelectedViewId('system-all');
-                  setSelectedCompanyId(companyId);
-                  setFilters((prev) => ({ ...prev, assignedTo: '' }));
-                }}
-                selectClassName='h-9 w-full min-w-0 rounded-full border border-gray-200 bg-white px-3 text-[11px] text-gray-700'
+        <div className='flex flex-col gap-3'>
+          <div className='flex items-center gap-2'>
+            <div className='min-w-0 flex-1'>
+              <LeadSearchBar
+                query={query}
+                onQueryChange={setQuery}
+                searchFields={searchFields}
+                onSearchFieldsChange={setSearchFields}
               />
-            )}
+            </div>
 
-            <div
-              className={`flex flex-col gap-2 sm:flex-row sm:flex-wrap ${
-                hasGroupScope
-                  ? 'md:col-span-2 lg:col-span-1 lg:flex-nowrap lg:justify-end'
-                  : 'md:col-span-2 lg:col-span-1 lg:flex-nowrap lg:justify-end'
+            <button
+              type='button'
+              onClick={() => setShowFilters((prev) => !prev)}
+              className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[11px] font-medium ${
+                showFilters || hasActiveFilters
+                  ? 'border-primary/30 bg-primary/5 text-primary'
+                  : 'border-gray-100 bg-gray-50 text-gray-600 hover:bg-gray-100'
               }`}
             >
-              <button
-                type='button'
-                onClick={handleSaveCurrentView}
-                className='h-9 w-full shrink-0 rounded-full border border-gray-200 bg-gray-100 px-3 text-[11px] text-gray-700 hover:bg-gray-50 sm:w-auto'
-              >
-                Enregistrer la vue
-              </button>
-              <button
-                type='button'
-                onClick={() => setShowFilters((prev) => !prev)}
-                className='h-9 w-full shrink-0 rounded-full border border-gray-200 bg-gray-100 px-3 text-[11px] text-gray-700 md:hidden sm:w-auto'
-              >
-                {showFilters ? 'Masquer les filtres' : 'Afficher les filtres'}
-              </button>
-            </div>
-          </div>
-        </div>
+              <Filter className='h-3.5 w-3.5' />
+              Filtre
+              {hasActiveFilters
+                ? ` (${
+                    (filters.status.length > 0 ? 1 : 0) + advancedFilterCount
+                  })`
+                : ''}
+            </button>
 
-        <div
-          className={`mt-2 rounded-2xl bg-gray-50 border border-gray-100 px-3 py-3 flex flex-col gap-3 ${
-            showFilters ? 'block' : 'hidden md:block'
-          }`}
-        >
-          <div className='flex flex-wrap gap-1.5'>
-            {STATUS_ORDER.map((status) => {
-              const active = filters.status.includes(status);
-              return (
-                <button
-                  key={status}
-                  type='button'
-                  onClick={() => toggleStatusFilter(status)}
-                  className={`px-2.5 py-1.5 rounded-full text-[11px] border transition-colors ${
-                    active
-                      ? 'bg-primary text-white border-primary shadow-neu'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
-                  }`}
-                >
-                  {STATUS_LABELS[status] ?? status}
-                </button>
-              );
-            })}
-          </div>
-          <div className='grid grid-cols-1 gap-3 text-[11px] sm:grid-cols-2 xl:grid-cols-4'>
-            <div className='flex flex-col gap-1'>
-              <span className='text-gray-500'>Source</span>
-              <input
-                type='text'
-                value={filters.source}
-                onChange={(e) => {
-                  setSelectedViewId('');
-                  setFilters((prev) => ({ ...prev, source: e.target.value }));
-                }}
-                placeholder='Ex: Facebook, LinkedIn, Tik Tok...'
-                className='h-8 rounded-full border border-gray-200 bg-white px-3 text-[11px] text-gray-700'
-              />
-            </div>
-            {isManagerOrAdmin && (
-              <div className='flex flex-col gap-1'>
-                <span className='text-gray-500'>Commercial</span>
-                <select
-                  value={filters.assignedTo}
-                  onChange={(e) => {
-                    setSelectedViewId('');
-                    setFilters((prev) => ({
-                      ...prev,
-                      assignedTo: e.target.value,
-                    }));
+            {hasGroupScope && (
+              <div className='w-36 shrink-0 sm:w-44 md:w-52'>
+                <GroupCompanySelect
+                  id='leads-company'
+                  label=''
+                  value={selectedCompanyId}
+                  options={companyOptions}
+                  fallbackOption={
+                    authUser?.company
+                      ? {
+                          id: authUser.company.id,
+                          name: authUser.company.name,
+                        }
+                      : undefined
+                  }
+                  includeHoldingOption
+                  onChange={(companyId) => {
+                    setSelectedViewId('system-all');
+                    setSelectedCompanyId(companyId);
+                    setFilters((prev) => ({ ...prev, assignedTo: '' }));
                   }}
-                  className='h-8 rounded-full border border-gray-200 bg-white px-3 text-[11px] text-gray-700'
-                >
-                  <option value=''>Tous</option>
-                  {userOptions.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
+                  selectClassName='h-9 w-full min-w-0 rounded-full border border-gray-200 bg-white px-3 text-[11px] text-gray-700'
+                />
               </div>
             )}
-            <div className='flex flex-col gap-1 sm:col-span-2 xl:col-span-1'>
-              <span className='text-gray-500'>Date de création</span>
-              <div className='flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-1'>
-                <input
-                  type='date'
-                  value={filters.createdFrom}
-                  onChange={(e) => {
-                    setSelectedViewId('');
-                    setFilters((prev) => ({
-                      ...prev,
-                      createdFrom: e.target.value,
-                    }));
-                  }}
-                  className='h-8 min-w-0 flex-1 rounded-full border border-gray-200 bg-white px-2 text-[11px] text-gray-700'
-                />
-                <span className='shrink-0 text-center text-[10px] text-gray-400 sm:px-0.5'>
-                  au
-                </span>
-                <input
-                  type='date'
-                  value={filters.createdTo}
-                  onChange={(e) => {
-                    setSelectedViewId('');
-                    setFilters((prev) => ({
-                      ...prev,
-                      createdTo: e.target.value,
-                    }));
-                  }}
-                  className='h-8 min-w-0 flex-1 rounded-full border border-gray-200 bg-white px-2 text-[11px] text-gray-700'
-                />
+          </div>
+
+          {(showFilters || hasActiveFilters) && (
+          <div className='flex flex-col gap-2.5 rounded-2xl border border-gray-100 bg-[#fafaff] p-3'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type='button'
+                    className='inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-[11px] text-gray-600 outline-none hover:border-gray-300'
+                  >
+                    <span className='text-gray-400'>Vue</span>
+                    <span className='max-w-44 truncate font-medium text-primary'>
+                      {selectedViewLabel}
+                    </span>
+                    <ChevronDown className='h-3 w-3 shrink-0 text-gray-400' />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className='w-64 space-y-1 p-2'>
+                  <p className='px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-gray-400'>
+                    Vues enregistrées
+                  </p>
+                  {viewOptions.map((opt) => {
+                    const active = selectedViewId === opt.id;
+                    const disabled = opt.id === 'custom';
+                    return (
+                      <PopoverClose key={opt.id} asChild>
+                        <button
+                          type='button'
+                          disabled={disabled}
+                          onClick={() => {
+                            if (!disabled) handleSelectView(opt.id);
+                          }}
+                          className={`flex w-full items-center rounded-xl px-2.5 py-2 text-left text-[11px] transition-colors ${
+                            disabled
+                              ? 'cursor-default text-gray-400'
+                              : active
+                                ? 'bg-primary/5 font-medium text-primary'
+                                : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      </PopoverClose>
+                    );
+                  })}
+                </PopoverContent>
+              </Popover>
+
+              <div className='ml-auto flex flex-wrap items-center gap-1.5'>
+                {hasActiveFilters && (
+                  <button
+                    type='button'
+                    onClick={resetFilters}
+                    className='inline-flex h-8 items-center gap-1.5 rounded-full border border-rose-100 bg-white px-3 text-[11px] font-medium text-rose-600 hover:bg-rose-50'
+                  >
+                    <RotateCcw className='h-3 w-3' />
+                    Réinitialiser
+                  </button>
+                )}
+                <button
+                  type='button'
+                  onClick={handleSaveCurrentView}
+                  className='inline-flex h-8 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-[11px] font-medium text-gray-600 hover:border-primary/30 hover:text-primary'
+                >
+                  <Save className='h-3 w-3' />
+                  Enregistrer
+                </button>
               </div>
             </div>
-            <div className='flex flex-col gap-1'>
-              <span className='text-gray-500'>
-                Dernière activité &gt; X jours
+
+            <div className='flex flex-col gap-1.5 border-t border-gray-100/80 pt-2.5'>
+              <span className='text-[10px] font-medium uppercase tracking-wide text-gray-400'>
+                Stade de négociation
               </span>
-              <input
-                type='number'
-                min={0}
-                value={filters.staleDays ?? ''}
-                onChange={(e) => {
-                  setSelectedViewId('');
-                  const val = e.target.value;
-                  const num = val ? Number.parseInt(val, 10) : NaN;
-                  setFilters((prev) => ({
-                    ...prev,
-                    staleDays: Number.isNaN(num) ? undefined : num,
-                  }));
-                }}
-                placeholder='Ex: 7'
-                className='h-8 rounded-full border border-gray-200 bg-white px-3 text-[11px] text-gray-700'
-              />
+              <div className='flex flex-wrap gap-1.5'>
+                {STATUS_ORDER.map((status) => {
+                  const active = filters.status.includes(status);
+                  return (
+                    <button
+                      key={status}
+                      type='button'
+                      onClick={() => toggleStatusFilter(status)}
+                      className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
+                        active
+                          ? 'border-primary bg-primary text-white shadow-neu'
+                          : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {STATUS_LABELS[status] ?? status}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className='flex flex-col gap-1.5 border-t border-gray-100/80 pt-2.5'>
+              <span className='text-[10px] font-medium uppercase tracking-wide text-gray-400'>
+                Filtres avancés
+                {advancedFilterCount > 0
+                  ? ` · ${advancedFilterCount} actif${advancedFilterCount > 1 ? 's' : ''}`
+                  : ''}
+              </span>
+              <div className='flex flex-wrap items-center gap-2'>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button type='button' className='outline-none'>
+                      <FilterChipButton
+                        label='Source'
+                        value={filters.source.trim() || undefined}
+                        active={Boolean(filters.source.trim())}
+                        onClear={() => {
+                          markCustomView();
+                          setFilters((prev) => ({ ...prev, source: '' }));
+                        }}
+                      />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className='w-56 space-y-2 p-3'>
+                    <p className='text-[10px] font-medium uppercase tracking-wide text-gray-400'>
+                      Source
+                    </p>
+                    <input
+                      type='text'
+                      value={filters.source}
+                      onChange={(e) => {
+                        markCustomView();
+                        setFilters((prev) => ({
+                          ...prev,
+                          source: e.target.value,
+                        }));
+                      }}
+                      placeholder='Ex: Facebook, LinkedIn…'
+                      list='leads-source-suggestions'
+                      className='h-9 w-full rounded-xl border border-gray-200 bg-white px-2.5 text-[11px] text-primary outline-none'
+                    />
+                    <datalist id='leads-source-suggestions'>
+                      {availableSources.map((source) => (
+                        <option key={source} value={source} />
+                      ))}
+                    </datalist>
+                  </PopoverContent>
+                </Popover>
+
+                {isManagerOrAdmin && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button type='button' className='outline-none'>
+                        <FilterChipButton
+                          label='Commercial'
+                          value={assignedToLabel || undefined}
+                          active={Boolean(filters.assignedTo)}
+                          onClear={() => {
+                            markCustomView();
+                            setFilters((prev) => ({
+                              ...prev,
+                              assignedTo: '',
+                            }));
+                          }}
+                        />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className='w-56 space-y-2 p-3'>
+                      <p className='text-[10px] font-medium uppercase tracking-wide text-gray-400'>
+                        Commercial
+                      </p>
+                      <select
+                        value={filters.assignedTo}
+                        onChange={(e) => {
+                          markCustomView();
+                          setFilters((prev) => ({
+                            ...prev,
+                            assignedTo: e.target.value,
+                          }));
+                        }}
+                        className='h-9 w-full rounded-xl border border-gray-200 bg-white px-2.5 text-[11px] text-primary outline-none'
+                      >
+                        <option value=''>Tous</option>
+                        {userOptions.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name}
+                          </option>
+                        ))}
+                      </select>
+                    </PopoverContent>
+                  </Popover>
+                )}
+
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button type='button' className='outline-none'>
+                      <FilterChipButton
+                        label='Date de création'
+                        value={
+                          filters.createdFrom || filters.createdTo
+                            ? `${filters.createdFrom ? formatFilterDate(filters.createdFrom) : '…'} → ${filters.createdTo ? formatFilterDate(filters.createdTo) : '…'}`
+                            : undefined
+                        }
+                        active={Boolean(
+                          filters.createdFrom || filters.createdTo,
+                        )}
+                        onClear={() => {
+                          markCustomView();
+                          setFilters((prev) => ({
+                            ...prev,
+                            createdFrom: '',
+                            createdTo: '',
+                          }));
+                        }}
+                      />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className='w-64 space-y-3 p-3'>
+                    <p className='text-[10px] font-medium uppercase tracking-wide text-gray-400'>
+                      Date de création
+                    </p>
+                    <label className='flex flex-col gap-1'>
+                      <span className='text-[10px] text-gray-500'>Du</span>
+                      <DatePicker
+                        value={filters.createdFrom}
+                        max={filters.createdTo || undefined}
+                        placeholder='Date de début'
+                        onChange={(value) => {
+                          markCustomView();
+                          setFilters((prev) => ({
+                            ...prev,
+                            createdFrom: value,
+                          }));
+                        }}
+                      />
+                    </label>
+                    <label className='flex flex-col gap-1'>
+                      <span className='text-[10px] text-gray-500'>Au</span>
+                      <DatePicker
+                        value={filters.createdTo}
+                        min={filters.createdFrom || undefined}
+                        placeholder='Date de fin'
+                        onChange={(value) => {
+                          markCustomView();
+                          setFilters((prev) => ({
+                            ...prev,
+                            createdTo: value,
+                          }));
+                        }}
+                      />
+                    </label>
+                  </PopoverContent>
+                </Popover>
+
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button type='button' className='outline-none'>
+                      <FilterChipButton
+                        label='Dernière activité'
+                        value={
+                          typeof filters.staleDays === 'number'
+                            ? `> ${filters.staleDays} j`
+                            : undefined
+                        }
+                        active={typeof filters.staleDays === 'number'}
+                        onClear={() => {
+                          markCustomView();
+                          setFilters((prev) => ({
+                            ...prev,
+                            staleDays: undefined,
+                          }));
+                        }}
+                      />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className='w-56 space-y-2 p-3'>
+                    <p className='text-[10px] font-medium uppercase tracking-wide text-gray-400'>
+                      Dernière activité &gt; X jours
+                    </p>
+                    <input
+                      type='number'
+                      min={0}
+                      value={filters.staleDays ?? ''}
+                      onChange={(e) => {
+                        markCustomView();
+                        const val = e.target.value;
+                        const num = val ? Number.parseInt(val, 10) : NaN;
+                        setFilters((prev) => ({
+                          ...prev,
+                          staleDays: Number.isNaN(num) ? undefined : num,
+                        }));
+                      }}
+                      placeholder='Ex: 7'
+                      className='h-9 w-full rounded-xl border border-gray-200 bg-white px-2.5 text-[11px] text-primary outline-none'
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
           </div>
+          )}
         </div>
 
         {loading ? (
@@ -813,22 +1212,23 @@ function LeadsPageInner() {
                   {filtered.length === 0 ? (
                     <div className='rounded-2xl border border-dashed border-gray-200 bg-white/50 px-4 py-10 text-center'>
                       <p className='text-[12px] text-gray-500'>
-                        Aucun prospect pour le moment. Ajoutez votre premier
-                        prospect.
+                        {hasActiveFilters || query.trim()
+                          ? 'Aucun contact ne correspond à cette vue ou à ces filtres.'
+                          : 'Aucun contact pour le moment. Ajoutez votre premier contact.'}
                       </p>
                     </div>
                   ) : (
                     <Table containerClassName='max-h-[min(70vh,720px)]'>
                       <TableHeader>
                         <TableRow className='hover:bg-transparent'>
+                          <TableHead>Contact</TableHead>
                           <TableHead>Entreprise</TableHead>
                           {isHoldingMode && <TableHead>Société CRM</TableHead>}
-                          <TableHead>Contacts</TableHead>
                           <TableHead className='hidden md:table-cell'>
-                            Domaine
+                            Poste
                           </TableHead>
                           <TableHead className='hidden lg:table-cell'>
-                            Quartier, commune
+                            Téléphone
                           </TableHead>
                           <TableHead>{NEGOTIATION_STAGE_FIELD_LABEL}</TableHead>
                           <TableHead className='text-right'>Actions</TableHead>
@@ -836,38 +1236,51 @@ function LeadsPageInner() {
                       </TableHeader>
                       <TableBody>
                         {paginatedLeads.map((lead) => {
-                          const company =
-                            lead.companyName?.trim() || 'Sans nom';
-                          const initials = company
-                            .split(/\s+/)
-                            .filter(Boolean)
-                            .slice(0, 2)
-                            .map((p) => p[0]?.toUpperCase() ?? '')
-                            .join('');
-                          const domains = lead.activityDomains ?? [];
+                          const fullName =
+                            `${lead.civility ? `${lead.civility} ` : ''}${lead.firstName} ${lead.lastName}`.trim() ||
+                            'Contact';
+                          const canOpen = lead.canViewFiche !== false;
 
                           return (
                             <TableRow
                               key={lead.id}
-                              className='cursor-pointer group'
-                              onClick={() => router.push(`/leads/${lead.id}`)}
+                              className={`group ${canOpen ? 'cursor-pointer' : 'opacity-70'}`}
+                              onClick={() => {
+                                if (canOpen) router.push(contactHref(lead));
+                              }}
                             >
                               <TableCell>
                                 <div className='flex items-center gap-2.5 min-w-0'>
-                                  <div className='w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center text-[10px] font-semibold shrink-0 border border-primary/10'>
-                                    {initials || 'P'}
+                                  <div className='w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-semibold shrink-0 border border-primary/10'>
+                                    {contactInitials(
+                                      lead.firstName,
+                                      lead.lastName,
+                                    )}
                                   </div>
                                   <div className='min-w-0'>
                                     <p className='text-xs font-semibold text-primary truncate group-hover:underline'>
-                                      {company}
+                                      {fullName}
                                     </p>
-                                    {lead.leadType ? (
+                                    {lead.email ? (
                                       <p className='text-[10px] text-gray-400 truncate'>
-                                        {formatLeadTypeLabel(lead.leadType)}
+                                        {lead.email}
                                       </p>
                                     ) : null}
                                   </div>
                                 </div>
+                              </TableCell>
+                              <TableCell>
+                                {lead.companyName?.trim() ? (
+                                  <Link
+                                    href={`/leads/${lead.prospectId}`}
+                                    className='text-xs text-gray-700 hover:text-primary hover:underline'
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {lead.companyName}
+                                  </Link>
+                                ) : (
+                                  <TableEmpty />
+                                )}
                               </TableCell>
                               {isHoldingMode && (
                                 <TableCell>
@@ -880,98 +1293,11 @@ function LeadsPageInner() {
                                   )}
                                 </TableCell>
                               )}
-                              <TableCell>
-                                {(lead.contactsPreview?.length ?? 0) > 0 ? (
-                                  <div
-                                    className='flex max-w-72 flex-wrap gap-1'
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    {lead.contactsPreview?.map((c) => {
-                                      const fullName =
-                                        `${c.firstName} ${c.lastName}`.trim();
-                                      const canOpen =
-                                        Boolean(c.id) &&
-                                        c.canViewFiche !== false;
-                                      const chip = (
-                                        <span className='inline-flex max-w-full items-center gap-1.5'>
-                                          <span className='flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[9px] font-semibold text-primary'>
-                                            {contactInitials(
-                                              c.firstName,
-                                              c.lastName,
-                                            )}
-                                          </span>
-                                          <span className='truncate'>
-                                            {fullName || 'Contact'}
-                                          </span>
-                                        </span>
-                                      );
-                                      if (!canOpen) {
-                                        return (
-                                          <span
-                                            key={c.id || fullName}
-                                            title='Vous ne pouvez pas ouvrir cette fiche'
-                                            className='inline-flex max-w-full rounded-full border border-gray-100 bg-gray-50 px-2 py-0.5 text-[11px] text-gray-400'
-                                          >
-                                            {chip}
-                                          </span>
-                                        );
-                                      }
-                                      return (
-                                        <Link
-                                          key={c.id}
-                                          href={`/leads/${lead.id}/contacts/${c.id}`}
-                                          title={`Ouvrir la fiche de ${fullName}`}
-                                          className='inline-flex max-w-full rounded-full border border-gray-100 bg-white px-2 py-0.5 text-[11px] text-primary transition-colors hover:border-primary/30 hover:bg-gray-50'
-                                        >
-                                          {chip}
-                                        </Link>
-                                      );
-                                    })}
-                                  </div>
-                                ) : (
-                                  <TableEmpty />
-                                )}
-                              </TableCell>
                               <TableCell className='hidden md:table-cell'>
-                                {domains.length > 0 ? (
-                                  <div className='flex flex-wrap gap-1 max-w-56'>
-                                    <span
-                                      className='inline-flex max-w-full px-2 py-0.5 rounded-full bg-gray-50 border border-gray-100 text-[10px] text-gray-600 truncate'
-                                      title={domains[0]}
-                                    >
-                                      {domains[0]}
-                                    </span>
-                                    {domains.length > 1 ? (
-                                      <span className='inline-flex px-2 py-0.5 rounded-full bg-gray-50 border border-gray-100 text-[10px] text-gray-400'>
-                                        +{domains.length - 1}
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                ) : (
-                                  <TableEmpty />
-                                )}
+                                {lead.jobTitle || <TableEmpty />}
                               </TableCell>
                               <TableCell className='hidden lg:table-cell'>
-                                {lead.location || lead.geographicSituation ? (
-                                  <span className='inline-flex max-w-40 flex-col gap-0.5'>
-                                    {lead.location ? (
-                                      <span className='truncate'>{lead.location}</span>
-                                    ) : null}
-                                    {lead.geographicSituation ? (
-                                      <a
-                                        href={lead.geographicSituation}
-                                        target='_blank'
-                                        rel='noreferrer'
-                                        className='truncate text-primary hover:underline'
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        Carte
-                                      </a>
-                                    ) : null}
-                                  </span>
-                                ) : (
-                                  <TableEmpty />
-                                )}
+                                {lead.phone || <TableEmpty />}
                               </TableCell>
                               <TableCell>
                                 <span
@@ -1000,22 +1326,26 @@ function LeadsPageInner() {
                                     align='end'
                                   >
                                     <DropdownMenuItem
+                                      disabled={!canOpen}
                                       onSelect={(e) => {
                                         e.preventDefault();
-                                        router.push(`/leads/${lead.id}`);
+                                        if (canOpen)
+                                          router.push(contactHref(lead));
                                       }}
                                     >
                                       <Eye className='w-4 h-4 mr-2' />
-                                      Voir
+                                      Voir la fiche
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
                                       onSelect={(e) => {
                                         e.preventDefault();
-                                        openLead(lead as unknown as Lead);
+                                        router.push(
+                                          `/leads/${lead.prospectId}`,
+                                        );
                                       }}
                                     >
                                       <Pencil className='w-4 h-4 mr-2' />
-                                      Modifier
+                                      Voir l&apos;entreprise
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
                                       className='text-rose-600 focus:text-rose-600'
@@ -1023,13 +1353,13 @@ function LeadsPageInner() {
                                         e.preventDefault();
                                         if (
                                           !confirm(
-                                            'Mettre ce prospect à la corbeille ? Il pourra être restauré par un responsable.',
+                                            'Mettre ce contact à la corbeille ?',
                                           )
                                         )
                                           return;
                                         try {
                                           const res = await fetch(
-                                            `/api/prospects/${lead.id}`,
+                                            `/api/prospects/${lead.prospectId}/contacts/${lead.contactId}`,
                                             { method: 'DELETE' },
                                           );
                                           if (res.ok) {
@@ -1064,7 +1394,7 @@ function LeadsPageInner() {
                     <div className='text-[11px] text-gray-500'>
                       Affichage de {(currentPage - 1) * leadsPerPage + 1} à{' '}
                       {Math.min(currentPage * leadsPerPage, filtered.length)}{' '}
-                      sur {filtered.length} prospects
+                      sur {filtered.length} contacts
                     </div>
                     <div className='flex items-center gap-2'>
                       <button
@@ -1132,13 +1462,18 @@ function LeadsPageInner() {
                   {filtered.map((lead) => (
                     <LeadCard
                       key={lead.id}
-                      lead={lead as unknown as Lead}
-                      onClick={() => router.push(`/leads/${lead.id}`)}
+                      lead={toLeadCard(lead)}
+                      compact
+                      onClick={() => {
+                        if (lead.canViewFiche !== false) openLead(lead);
+                      }}
                     />
                   ))}
                   {filtered.length === 0 && (
                     <p className='col-span-full py-4 text-[12px] text-gray-500'>
-                      Aucun lead pour le moment. Ajoutez votre premier prospect.
+                      {hasActiveFilters || query.trim()
+                        ? 'Aucun contact ne correspond à cette vue ou à ces filtres.'
+                        : 'Aucun contact pour le moment. Ajoutez votre premier contact.'}
                     </p>
                   )}
                 </div>
@@ -1148,14 +1483,19 @@ function LeadsPageInner() {
                     {paginatedLeads.map((lead) => (
                       <LeadCard
                         key={lead.id}
-                        lead={lead as unknown as Lead}
-                        onClick={() => router.push(`/leads/${lead.id}`)}
+                        lead={toLeadCard(lead)}
+                        compact
+                        onClick={() => {
+                          if (lead.canViewFiche !== false) openLead(lead);
+                        }}
                       />
                     ))}
                   </div>
                   {filtered.length === 0 && (
                     <p className='py-4 text-[12px] text-gray-500'>
-                      Aucun lead pour le moment. Ajoutez votre premier prospect.
+                      {hasActiveFilters || query.trim()
+                        ? 'Aucun contact ne correspond à cette vue ou à ces filtres.'
+                        : 'Aucun contact pour le moment. Ajoutez votre premier contact.'}
                     </p>
                   )}
                   {filtered.length > 0 && (
@@ -1168,7 +1508,7 @@ function LeadsPageInner() {
                             currentPage * leadsPerPage,
                             filtered.length,
                           )}{' '}
-                          sur {filtered.length} prospects
+                          sur {filtered.length} contacts
                         </div>
                         <label className='flex items-center gap-2 text-[11px] text-gray-500'>
                           <span>Par page</span>
@@ -1257,9 +1597,12 @@ function LeadsPageInner() {
                     <PipelineColumn
                       title={STATUS_LABELS[status] ?? status}
                       status={status}
-                      leads={(grouped[status] ?? []) as unknown as Lead[]}
+                      leads={(grouped[status] ?? []).map(toLeadCard)}
                       onDrop={handleLeadDrop}
-                      onLeadClick={(l) => router.push(`/leads/${l.id}`)}
+                      onLeadClick={(l) => {
+                        const row = leads.find((x) => x.id === l.id);
+                        if (row && row.canViewFiche !== false) openLead(row);
+                      }}
                     />
                   </div>
                 ))}
@@ -1272,19 +1615,9 @@ function LeadsPageInner() {
       <ProspectCreateSheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        onCreated={(prospect) =>
-          setLeads((prev) => [
-            {
-              id: prospect.id,
-              firstName: '',
-              lastName: '',
-              companyName: prospect.name,
-              status: 'EN_PROSPECTION',
-              jobTitle: '1 contact',
-            },
-            ...prev,
-          ])
-        }
+        onCreated={() => {
+          void fetchLeads();
+        }}
       />
 
       <LeadImportSheet
@@ -1323,6 +1656,10 @@ function LeadsPageInner() {
   );
 }
 
-const LeadsPage = withDashboardLayout(LeadsPageInner);
+const LeadsPage = withDashboardLayout(LeadsPageInner, {
+  title: 'Gestion Contacts',
+  subtitle: 'Gérez vos contacts et suivez leurs stades de négociation.',
+  titleIcon: ContactRound,
+});
 
 export default LeadsPage;

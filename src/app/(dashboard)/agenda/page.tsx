@@ -124,21 +124,6 @@ function AgendaPageInner() {
         }}
       />
 
-      {/* Bloc 1 : En-tête page Agenda */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-            <CalendarDays className="h-5 w-5" />
-          </span>
-          <div>
-            <h1 className="text-lg font-semibold text-primary">Agenda</h1>
-            <p className="text-xs text-gray-500">
-              Tâches et actions du commercial par jour, semaine, mois, année ou période personnalisée
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* Filtre entreprise + commerciale (directrice) */}
       {hasGroupScope && (
         <section
@@ -227,4 +212,9 @@ function AgendaPageInner() {
   );
 }
 
-export default withDashboardLayout(AgendaPageInner);
+export default withDashboardLayout(AgendaPageInner, {
+  title: 'Agenda',
+  subtitle:
+    'Tâches et actions du commercial par jour, semaine, mois, année ou période personnalisée',
+  titleIcon: CalendarDays,
+});

@@ -50,7 +50,7 @@ export default function PipelineColumn({
       <div className="flex items-center justify-between gap-2 sticky top-0 z-10 bg-bgGray/95 backdrop-blur-xs rounded-xl px-1 py-1">
         <h2 className="text-sm md:text-base font-semibold text-primary truncate">{title}</h2>
         <span className="inline-flex items-center rounded-full bg-white border border-gray-200 px-2 py-0.5 text-[10px] md:text-xs text-gray-600 shrink-0">
-          {leads.length} prospect{leads.length > 1 ? "s" : ""}
+          {leads.length} contact{leads.length > 1 ? "s" : ""}
         </span>
       </div>
       <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-280px)] pr-1 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
@@ -58,14 +58,15 @@ export default function PipelineColumn({
           <LeadCard
             key={lead.id}
             lead={lead}
+            compact
             onClick={() => onLeadClick?.(lead)}
             draggable={!!onDrop}
             onDragStart={
               onDrop
                 ? (e) => {
-                    e.dataTransfer.setData("leadId", lead.id);
-                    e.dataTransfer.setData("fromStatus", lead.status);
-                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData('leadId', lead.id);
+                    e.dataTransfer.setData('fromStatus', lead.status);
+                    e.dataTransfer.effectAllowed = 'move';
                   }
                 : undefined
             }

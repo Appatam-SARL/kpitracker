@@ -2,11 +2,11 @@
 
 import ProspectFichePage from '@/components/prospects/ProspectFichePage';
 
-export default function LeadProspectDetailPage() {
+export default function EntrepriseFichePage() {
   return (
     <ProspectFichePage
-      backHref='/leads'
-      backLabel='Retour aux contacts'
+      backHref='/entreprises'
+      backLabel='Retour aux entreprises'
     />
   );
 }

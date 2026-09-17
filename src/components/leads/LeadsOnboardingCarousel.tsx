@@ -30,11 +30,11 @@ type Slide = {
 const SLIDES: Slide[] = [
   {
     id: 'add',
-    badge: 'Prospects',
-    title: 'Centralisez vos leads',
+    badge: 'Contacts',
+    title: 'Centralisez vos contacts',
     description:
-      'Ajoutez un prospect en quelques secondes et suivez-le tout au long du pipeline commercial.',
-    cta: 'Ajouter un lead',
+      'Ajoutez un contact en quelques secondes et suivez-le tout au long du pipeline commercial.',
+    cta: 'Ajouter un contact',
     ctaHref: '#leads-actions',
     tone: {
       panel: 'bg-emerald-500',
@@ -50,7 +50,7 @@ const SLIDES: Slide[] = [
     badge: 'Excel',
     title: 'Importez et exportez',
     description:
-      'Chargez une liste depuis Excel ou exportez vos prospects filtrés pour partager avec l’équipe.',
+      'Chargez une liste depuis Excel ou exportez vos contacts filtrés pour partager avec l’équipe.',
     cta: 'Importer Excel',
     ctaHref: '#leads-actions',
     tone: {

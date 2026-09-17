@@ -6,8 +6,8 @@ import {
   BarChart3,
   Building2,
   CalendarDays,
+  ContactRound,
   Home,
-  UserPlus,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -21,7 +21,7 @@ const LEFT_TABS = [
 ] as const;
 
 const RIGHT_TABS = [
-  { icon: UserPlus, label: 'Prospects', href: '/leads' },
+  { icon: ContactRound, label: 'Contacts', href: '/leads' },
   { icon: Building2, label: 'Clients', href: '/clients' },
 ] as const;
 

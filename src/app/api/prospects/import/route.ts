@@ -91,6 +91,7 @@ export async function POST(req: Request) {
               location,
               geographicSituation,
               notes: row.observation?.trim() || null,
+              createdById: user.id,
               activityDomains:
                 listValidation.activityDomains.length > 0
                   ? {

@@ -11,6 +11,14 @@ import { fetchApi } from '@/lib/fetch-api';
 import { useGroupCompanyScope } from '@/hooks/useGroupCompanyScope';
 import { GROUP_HOLDING_SCOPE_VALUE } from '@/lib/group-scope-roles';
 import { isAdminOrManagerLike } from '@/lib/roles';
+import { DatePicker } from '@/components/ui/date-picker';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -368,16 +376,7 @@ function StatsPageInner() {
       <section className='mt-2 flex flex-col gap-4'>
         <StatsOnboardingCarousel />
 
-        <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
-          <div className='min-w-0'>
-            <h1 className='text-xl md:text-2xl font-semibold text-primary'>
-              Statistiques
-            </h1>
-            <p className='text-xs md:text-sm text-gray-500 mt-0.5 max-w-2xl'>
-              Pilotage commercial : répartition des prospects, résumé des ventes
-              et suivi des objectifs.
-            </p>
-          </div>
+        <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-end'>
           {isManagerOrAdmin && (
             <nav
               className='flex flex-wrap gap-2'
@@ -443,22 +442,32 @@ function StatsPageInner() {
                   >
                     Commercial
                   </label>
-                  <select
-                    id='stats-page-commercial'
-                    value={selectedCommercialId}
-                    onChange={(e) => {
-                      setSelectedCommercialId(e.target.value);
+                  <Select
+                    value={selectedCommercialId || '__all__'}
+                    onValueChange={(value) => {
+                      setSelectedCommercialId(
+                        value === '__all__' ? '' : value,
+                      );
                       setReport(null);
                     }}
-                    className='rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs w-full sm:min-w-[200px]'
                   >
-                    <option value=''>Tous les commerciaux</option>
-                    {commercialUsers.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger
+                      id='stats-page-commercial'
+                      className='w-full sm:min-w-[200px]'
+                    >
+                      <SelectValue placeholder='Tous les commerciaux' />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='__all__'>
+                        Tous les commerciaux
+                      </SelectItem>
+                      {commercialUsers.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
             </div>
@@ -490,20 +499,22 @@ function StatsPageInner() {
             <div className='flex flex-col sm:flex-row flex-wrap gap-3 items-end rounded-xl border border-gray-100 bg-bgGray/60 p-3'>
               <div className='flex flex-col gap-1'>
                 <label className='text-[11px] text-gray-500'>Du</label>
-                <input
-                  type='date'
+                <DatePicker
                   value={reportFrom}
-                  onChange={(e) => setReportFrom(e.target.value)}
-                  className='rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs'
+                  onChange={setReportFrom}
+                  max={reportTo || undefined}
+                  placeholder='Date de début'
+                  buttonClassName='rounded-lg text-xs'
                 />
               </div>
               <div className='flex flex-col gap-1'>
                 <label className='text-[11px] text-gray-500'>Au</label>
-                <input
-                  type='date'
+                <DatePicker
                   value={reportTo}
-                  onChange={(e) => setReportTo(e.target.value)}
-                  className='rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs'
+                  onChange={setReportTo}
+                  min={reportFrom || undefined}
+                  placeholder='Date de fin'
+                  buttonClassName='rounded-lg text-xs'
                 />
               </div>
               <div className='flex flex-col gap-1 min-w-[160px] flex-1 sm:flex-none'>
@@ -1019,6 +1030,11 @@ function StatsPageInner() {
   );
 }
 
-const StatsPage = withDashboardLayout(StatsPageInner);
+const StatsPage = withDashboardLayout(StatsPageInner, {
+  title: 'Statistiques',
+  subtitle:
+    'Pilotage commercial : répartition des prospects, résumé des ventes et suivi des objectifs.',
+  titleIcon: BarChart3,
+});
 
 export default StatsPage;

@@ -153,11 +153,11 @@ const SECTIONS: GuideSection[] = [
     ),
   },
   {
-    id: 'leads-prospects',
-    label: 'Leads (Prospects)',
+    id: 'leads-contacts',
+    label: 'Contacts',
     icon: UserPlus,
-    summary: 'Entreprises, contacts, stades, import / export.',
-    keywords: 'leads prospects contacts stade import excel kanban',
+    summary: 'Pipeline contacts, stades, import / export.',
+    keywords: 'contacts leads prospects stade import excel kanban',
     content: (
       <>
         <BulletList
@@ -167,8 +167,12 @@ const SECTIONS: GuideSection[] = [
               stade, source, commercial, dates…
             </>,
             <>
-              <strong>Entreprise vs contact :</strong> la fiche entreprise regroupe
-              les contacts ; chaque commerciale suit ses contacts et leur stade.
+              <strong>Contacts :</strong> cette page sert à gérer les contacts ;
+              les entreprises se gèrent dans le menu{' '}
+              <Link href='/entreprises' className='font-medium underline'>
+                Entreprises
+              </Link>
+              .
             </>,
             <>
               <strong>Stade de négociation :</strong> En prospection → Vente
@@ -464,6 +468,7 @@ export default function GuidePage() {
     <DashboardShell
       title="Guide d'utilisation"
       subtitle="Essentiel pour utiliser KpiTracker au quotidien"
+      titleIcon={BookOpen}
     >
       <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6'>
         {/* Sommaire sticky (desktop) */}
