@@ -63,8 +63,51 @@ export default function RootLayout({
       <body
         className={`${plusJakarta.className} min-h-screen bg-bgGray text-primary`}
       >
+        {/* Visible dès le premier paint (ouverture via barre d’adresse), avant hydratation. */}
+        <div
+          id='crm-boot-splash'
+          suppressHydrationWarning
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 200,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#f4f4f4',
+          }}
+          aria-hidden='true'
+        >
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `
+                @keyframes crm-logo-bounce {
+                  0%, 100% { transform: translateY(0); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); }
+                  50% { transform: translateY(-18px); animation-timing-function: cubic-bezier(0, 0, 0.2, 1); }
+                }
+                #crm-boot-splash img {
+                  animation: crm-logo-bounce 1.1s infinite;
+                  will-change: transform;
+                }
+              `,
+            }}
+          />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src='/kpitracker-logo.png'
+            alt=''
+            width={520}
+            height={220}
+            style={{
+              height: 'auto',
+              width: 'min(92vw, 32rem)',
+              maxWidth: '520px',
+              objectFit: 'contain',
+            }}
+          />
+        </div>
         <AuthProvider>
-          {/* <Navbar /> */}
           <div className='md:pt-0'>{children}</div>
           <Analytics />
         </AuthProvider>
