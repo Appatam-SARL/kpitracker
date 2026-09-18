@@ -25,19 +25,21 @@ import {
   NEGOTIATION_STAGE_FIELD_LABEL,
   NEGOTIATION_STAGE_LABELS,
   NEGOTIATION_STAGE_STYLES,
-} from "@/config/negotiation-stage";
-import { GOALS_INVALIDATE_EVENT } from "@/lib/goals-events";
+} from '@/config/negotiation-stage';
+import { formatLeadTypeLabel } from '@/config/lead-options';
+import { GOALS_INVALIDATE_EVENT } from '@/lib/goals-events';
 import { GROUP_HOLDING_SCOPE_VALUE } from "@/lib/group-scope-roles";
 import { isAdminOrManagerLike } from "@/lib/roles";
 import {
   ArrowRight,
   Building2,
+  ContactRound,
   Percent,
   RefreshCw,
   Target,
   UserCheck,
   Users,
-} from "lucide-react";
+} from 'lucide-react';
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -55,25 +57,38 @@ interface LeadStats {
   total: number;
   converted: number;
   conversionRate: number;
+  contacts: number;
 }
 
 const initialLeadStats: LeadStats = {
   total: 0,
   converted: 0,
   conversionRate: 0,
+  contacts: 0,
 };
 
 interface RecentLead {
   id: string;
-  companyName?: string;
-  firstName: string;
-  lastName: string;
-  contactName?: string | null;
-  email?: string | null;
-  phone?: string | null;
+  companyName: string;
+  logoUrl?: string | null;
+  leadType?: string | null;
+  activitySector?: string | null;
+  location?: string | null;
+  websiteUrl?: string | null;
   contactsCount?: number;
-  status: string;
   createdAt?: string;
+}
+
+interface RecentContact {
+  id: string;
+  contactId: string;
+  prospectId: string;
+  companyName: string;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  status: string;
+  createdAt: string;
 }
 
 const LEAD_STATUS_LABELS: Record<string, string> = {
@@ -101,6 +116,13 @@ function progressBarColor(ratio: number): string {
   return "bg-sky-500";
 }
 
+function companyInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase();
+}
+
 export default function DashboardPage() {
   const { user: authUser } = useAuth();
   const {
@@ -115,6 +137,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [leadStats, setLeadStats] = useState<LeadStats>(initialLeadStats);
   const [recentLeads, setRecentLeads] = useState<RecentLead[]>([]);
+  const [recentContacts, setRecentContacts] = useState<RecentContact[]>([]);
   const [currentGoal, setCurrentGoal] = useState<CurrentGoal | null>(null);
   const [teamGoals, setTeamGoals] = useState<CurrentGoal[]>([]);
   const [goalsLoading, setGoalsLoading] = useState(false);
@@ -163,12 +186,15 @@ export default function DashboardPage() {
 
   const fetchLeadStats = useCallback(async () => {
     try {
-      const [statsRes, recentRes] = await Promise.all([
-        fetch(dashboardApiUrl("/api/dashboard/lead-stats", apiCompanyId), {
-          cache: "no-store",
+      const [statsRes, recentRes, contactsRes] = await Promise.all([
+        fetch(dashboardApiUrl('/api/dashboard/lead-stats', apiCompanyId), {
+          cache: 'no-store',
         }).catch(() => null),
-        fetch(dashboardApiUrl("/api/dashboard/recent-leads", apiCompanyId), {
-          cache: "no-store",
+        fetch(dashboardApiUrl('/api/dashboard/recent-leads', apiCompanyId), {
+          cache: 'no-store',
+        }).catch(() => null),
+        fetch(dashboardApiUrl('/api/dashboard/recent-contacts', apiCompanyId), {
+          cache: 'no-store',
         }).catch(() => null),
       ]);
       if (statsRes && statsRes.ok) {
@@ -177,15 +203,21 @@ export default function DashboardPage() {
           total: statsData?.total ?? 0,
           converted: statsData?.converted ?? 0,
           conversionRate: statsData?.conversionRate ?? 0,
+          contacts: statsData?.contacts ?? 0,
         });
       }
       if (recentRes && recentRes.ok) {
         const recentData = (await recentRes.json()) as RecentLead[];
         setRecentLeads(Array.isArray(recentData) ? recentData : []);
       }
+      if (contactsRes && contactsRes.ok) {
+        const contactsData = (await contactsRes.json()) as RecentContact[];
+        setRecentContacts(Array.isArray(contactsData) ? contactsData : []);
+      }
     } catch {
       setLeadStats(initialLeadStats);
       setRecentLeads([]);
+      setRecentContacts([]);
     }
   }, [apiCompanyId]);
 
@@ -291,43 +323,61 @@ export default function DashboardPage() {
       </section>
 
       {/* KPIs compacts */}
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <NeumoCard className="flex items-center gap-3 border border-gray-100 bg-white p-3.5 shadow-neu-soft">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-700">
-            <Users className="h-5 w-5" strokeWidth={1.75} />
+      <section className='grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+        <NeumoCard className='flex items-center gap-3 border border-gray-100 bg-white p-3.5 shadow-neu-soft'>
+          <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-700'>
+            <Users className='h-5 w-5' strokeWidth={1.75} />
           </span>
-          <div className="min-w-0">
-            <p className="text-[11px] text-gray-500">Total prospects</p>
-            <p className="text-xl font-semibold tabular-nums text-primary">
+          <div className='min-w-0'>
+            <p className='text-[11px] text-gray-500'>Total prospects</p>
+            <p className='text-xl font-semibold tabular-nums text-primary'>
               {leadStats.total}
             </p>
-            <p className="truncate text-[10px] text-gray-400">{leadsScopeHint}</p>
+            <p className='truncate text-[10px] text-gray-400'>{leadsScopeHint}</p>
           </div>
         </NeumoCard>
 
-        <NeumoCard className="flex items-center gap-3 border border-gray-100 bg-white p-3.5 shadow-neu-soft">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
-            <Percent className="h-5 w-5" strokeWidth={1.75} />
+        <NeumoCard className='flex items-center gap-3 border border-gray-100 bg-white p-3.5 shadow-neu-soft'>
+          <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700'>
+            <ContactRound className='h-5 w-5' strokeWidth={1.75} />
           </span>
-          <div className="min-w-0">
-            <p className="text-[11px] text-gray-500">Taux de conversion</p>
-            <p className="text-xl font-semibold tabular-nums text-primary">
+          <div className='min-w-0'>
+            <p className='text-[11px] text-gray-500'>Total contacts</p>
+            <p className='text-xl font-semibold tabular-nums text-primary'>
+              {leadStats.contacts}
+            </p>
+            <p className='truncate text-[10px] text-gray-400'>{leadsScopeHint}</p>
+          </div>
+        </NeumoCard>
+
+        <NeumoCard className='flex items-center gap-3 border border-gray-100 bg-white p-3.5 shadow-neu-soft'>
+          <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700'>
+            <Percent className='h-5 w-5' strokeWidth={1.75} />
+          </span>
+          <div className='min-w-0'>
+            <p className='text-[11px] text-gray-500'>
+              Taux de conversion contact
+            </p>
+            <p className='text-xl font-semibold tabular-nums text-primary'>
               {leadStats.conversionRate.toFixed(1)}%
             </p>
-            <p className="text-[10px] text-gray-400">Prospects → clients</p>
+            <p className='truncate text-[10px] text-gray-400'>
+              {leadStats.converted}/{leadStats.contacts} contacts · prospect →
+              client
+            </p>
           </div>
         </NeumoCard>
 
-        <NeumoCard className="flex items-center gap-3 border border-gray-100 bg-white p-3.5 shadow-neu-soft">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
-            <UserCheck className="h-5 w-5" strokeWidth={1.75} />
+        <NeumoCard className='flex items-center gap-3 border border-gray-100 bg-white p-3.5 shadow-neu-soft'>
+          <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700'>
+            <UserCheck className='h-5 w-5' strokeWidth={1.75} />
           </span>
-          <div className="min-w-0">
-            <p className="text-[11px] text-gray-500">Leads convertis</p>
-            <p className="text-xl font-semibold tabular-nums text-primary">
+          <div className='min-w-0'>
+            <p className='text-[11px] text-gray-500'>Contacts convertis</p>
+            <p className='text-xl font-semibold tabular-nums text-primary'>
               {leadStats.converted}
             </p>
-            <p className="text-[10px] text-gray-400">Ventes conclues</p>
+            <p className='text-[10px] text-gray-400'>Ventes conclues</p>
           </div>
         </NeumoCard>
       </section>
@@ -506,7 +556,7 @@ export default function DashboardPage() {
               Répartition des stades
             </p>
             <p className="text-[11px] text-gray-500">
-              Pipeline par stade de négociation
+              Pipeline par stade de négociation (contacts du périmètre)
             </p>
           </div>
           <ChartPieDonut companyId={apiCompanyId} embedded />
@@ -525,95 +575,205 @@ export default function DashboardPage() {
         </NeumoCard>
       </section>
 
-      {/* Derniers leads */}
-      <section>
-        <NeumoCard className="border border-gray-100 bg-white p-4 shadow-neu-soft">
-          <div className="mb-3 flex items-center justify-between gap-2">
+      {/* Derniers prospects + Derniers contacts */}
+      <section className='grid grid-cols-1 gap-4 xl:grid-cols-2'>
+        <NeumoCard className='border border-gray-100 bg-white p-4 shadow-neu-soft'>
+          <div className='mb-3 flex items-center justify-between gap-2'>
             <div>
-              <p className="text-sm font-semibold text-gray-800">
+              <p className='text-sm font-semibold text-gray-800'>
                 Derniers prospects
               </p>
-              <p className="text-[11px] text-gray-500">
-                Les plus récemment créés sur ce périmètre
+              <p className='text-[11px] text-gray-500'>
+                Les entreprises les plus récemment créées sur ce périmètre
               </p>
             </div>
             <Link
-              href="/leads"
-              className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+              href='/entreprises'
+              className='inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline'
             >
               Voir tous
-              <ArrowRight className="h-3 w-3" />
+              <ArrowRight className='h-3 w-3' />
             </Link>
           </div>
-          <Table containerClassName="max-h-[340px]">
+          <Table containerClassName='max-h-[340px]'>
             <TableHeader>
-              <TableRow className="hover:bg-transparent">
+              <TableRow className='hover:bg-transparent'>
+                <TableHead className='w-12'>Logo</TableHead>
                 <TableHead>Entreprise</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>{NEGOTIATION_STAGE_FIELD_LABEL}</TableHead>
-                <TableHead>Date</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Secteur</TableHead>
+                <TableHead className='md:hidden'>Localisation</TableHead>
+                <TableHead className='md:hidden'>Date</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {recentLeads.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-gray-400">
+                  <TableCell
+                    colSpan={6}
+                    className='text-center text-gray-400'
+                  >
                     Aucun prospect récent sur ce périmètre.
                   </TableCell>
                 </TableRow>
               ) : (
                 recentLeads.map((lead) => {
-                  const companyLabel =
-                    lead.companyName ||
-                    [lead.firstName, lead.lastName].filter(Boolean).join(" ") ||
-                    "—";
-                  const contactLabel =
-                    lead.contactName ||
-                    lead.email ||
-                    lead.phone ||
-                    null;
-                  const extraContacts =
-                    (lead.contactsCount ?? 0) > 1
-                      ? ` +${(lead.contactsCount ?? 0) - 1}`
-                      : "";
+                  const companyLabel = lead.companyName || '—';
 
                   return (
                     <TableRow key={lead.id}>
                       <TableCell>
                         <Link
-                          href={`/leads/${lead.id}`}
-                          className="font-medium text-primary hover:underline"
+                          href={`/entreprises/${lead.id}`}
+                          className='flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border border-primary/10 bg-primary/10 text-primary'
+                          aria-label={`Voir ${companyLabel}`}
                         >
-                          {companyLabel}
+                          {lead.logoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={lead.logoUrl}
+                              alt=''
+                              className='h-full w-full object-contain'
+                            />
+                          ) : (
+                            <span className='text-[10px] font-semibold'>
+                              {companyInitials(companyLabel)}
+                            </span>
+                          )}
                         </Link>
                       </TableCell>
                       <TableCell>
-                        {contactLabel ? (
-                          <span className="text-gray-700">
-                            {contactLabel}
-                            {extraContacts && (
-                              <span className="text-gray-400">
-                                {extraContacts}
-                              </span>
-                            )}
-                          </span>
+                        <div className='min-w-0'>
+                          <Link
+                            href={`/entreprises/${lead.id}`}
+                            className='font-medium text-primary hover:underline'
+                          >
+                            {companyLabel}
+                          </Link>
+                          {lead.websiteUrl ? (
+                            <a
+                              href={
+                                lead.websiteUrl.startsWith('http')
+                                  ? lead.websiteUrl
+                                  : `https://${lead.websiteUrl}`
+                              }
+                              target='_blank'
+                              rel='noopener noreferrer'
+                              className='mt-0.5 block truncate text-[10px] text-gray-400 hover:text-primary'
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {lead.websiteUrl.replace(/^https?:\/\//i, '')}
+                            </a>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className='max-w-[140px] truncate text-gray-700'>
+                        {formatLeadTypeLabel(lead.leadType)}
+                      </TableCell>
+                      <TableCell className='max-w-[120px] truncate text-gray-700'>
+                        {lead.activitySector?.trim() ? (
+                          lead.activitySector
                         ) : (
                           <TableEmpty />
                         )}
                       </TableCell>
+                      <TableCell className='max-w-[120px] truncate text-gray-700 md:hidden'>
+                        {lead.location?.trim() ? (
+                          lead.location
+                        ) : (
+                          <TableEmpty />
+                        )}
+                      </TableCell>
+                      <TableCell className='tabular-nums text-gray-600 md:hidden'>
+                        {lead.createdAt ? (
+                          new Date(lead.createdAt).toLocaleDateString('fr-FR')
+                        ) : (
+                          <TableEmpty />
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </NeumoCard>
+
+        <NeumoCard className='border border-gray-100 bg-white p-4 shadow-neu-soft'>
+          <div className='mb-3 flex items-center justify-between gap-2'>
+            <div>
+              <p className='text-sm font-semibold text-gray-800'>
+                Derniers contacts
+              </p>
+              <p className='text-[11px] text-gray-500'>
+                Les 10 contacts les plus récemment ajoutés
+              </p>
+            </div>
+            <Link
+              href='/leads'
+              className='inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline'
+            >
+              Voir tous
+              <ArrowRight className='h-3 w-3' />
+            </Link>
+          </div>
+          <Table containerClassName='max-h-[340px]'>
+            <TableHeader>
+              <TableRow className='hover:bg-transparent'>
+                <TableHead>Contact</TableHead>
+                <TableHead>Entreprise</TableHead>
+                <TableHead>{NEGOTIATION_STAGE_FIELD_LABEL}</TableHead>
+                <TableHead>Date</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {recentContacts.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className='text-center text-gray-400'>
+                    Aucun contact récent sur ce périmètre.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                recentContacts.map((contact) => {
+                  const contactLabel =
+                    contact.contactName ||
+                    contact.email ||
+                    contact.phone ||
+                    '—';
+
+                  return (
+                    <TableRow key={contact.id}>
+                      <TableCell>
+                        <Link
+                          href={`/leads/${contact.prospectId}/contacts/${contact.contactId}`}
+                          className='font-medium text-primary hover:underline'
+                        >
+                          {contactLabel}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <Link
+                          href={`/leads/${contact.prospectId}`}
+                          className='text-gray-700 hover:underline'
+                        >
+                          {contact.companyName || '—'}
+                        </Link>
+                      </TableCell>
                       <TableCell>
                         <span
                           className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                            LEAD_STATUS_BADGE_STYLES[lead.status] ??
-                            "border border-gray-200 bg-gray-100 text-gray-600"
+                            LEAD_STATUS_BADGE_STYLES[contact.status] ??
+                            'border border-gray-200 bg-gray-100 text-gray-600'
                           }`}
                         >
-                          {LEAD_STATUS_LABELS[lead.status] ?? lead.status}
+                          {LEAD_STATUS_LABELS[contact.status] ?? contact.status}
                         </span>
                       </TableCell>
-                      <TableCell className="tabular-nums text-gray-600">
-                        {lead.createdAt ? (
-                          new Date(lead.createdAt).toLocaleDateString("fr-FR")
+                      <TableCell className='tabular-nums text-gray-600'>
+                        {contact.createdAt ? (
+                          new Date(contact.createdAt).toLocaleDateString(
+                            'fr-FR',
+                          )
                         ) : (
                           <TableEmpty />
                         )}

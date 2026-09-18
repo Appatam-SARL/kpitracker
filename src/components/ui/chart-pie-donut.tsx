@@ -181,7 +181,7 @@ export function ChartPieDonut({
             </PieChart>
           </ChartContainer>
           <p className='flex items-center justify-center gap-1.5 text-[11px] font-medium text-gray-600'>
-            {total} prospect{total !== 1 ? 's' : ''} par stade
+            {total} contact{total !== 1 ? 's' : ''} par stade
             <TrendingUp className='h-3.5 w-3.5 text-primary' />
           </p>
         </>
